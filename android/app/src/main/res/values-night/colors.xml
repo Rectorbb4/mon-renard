@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="app_bg">#13202B</color>
+    <color name="widget_bg">#1B2B38</color>
+    <color name="widget_fg">#E8EEF1</color>
+    <color name="widget_muted">#9FB0BA</color>
+    <color name="accent">#F28A52</color>
+    <color name="accent_fg">#1A0F08</color>
+    <color name="felt">#A9AAFF</color>
+    <color name="felt_bg">#262F52</color>
+    <color name="chip_bg">#D91B2B38</color>
+    <color name="chip_fg">#E8EEF1</color>
+</resources>

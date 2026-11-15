@@ -14,6 +14,9 @@
     type BackupSummary
   } from '../data/backup';
   import { getDB } from '../data/db';
+  import { isAndroidApp, saveFileInApp } from '../lib/android';
+
+  const inApp = isAndroidApp();
   import { lastBackupAt, markBackup } from '../lib/backupReminder';
   import { startJournal } from '../lib/journal.svelte';
   import { formatSince } from '../lib/time';
@@ -53,20 +56,26 @@
     try {
       const now = Date.now();
       const backup = await exportBackup(getDB(), now, __APP_VERSION__);
-      const blob = new Blob([backupToJson(backup)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = backupFileName(now);
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      const name = backupFileName(now);
+      const json = backupToJson(backup);
+      // Dans l'appli Android, c'est le téléphone qui écrit le fichier dans Téléchargements
+      const saved = saveFileInApp(name, json);
+      if (saved === false) throw new Error("L'appli Android n'a pas pu écrire le fichier");
+      if (saved === null) {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
       lastBackup = now;
       markBackup(now);
       message = {
         kind: 'ok',
-        text: `Sauvegarde enregistrée dans tes téléchargements : ${a.download}. Range-la dans un endroit sûr, elle contient ton journal.`
+        text: `Sauvegarde enregistrée dans tes téléchargements : ${name}. Range-la dans un endroit sûr, elle contient ton journal.`
       };
     } catch (e) {
       console.error(e);
@@ -123,7 +132,8 @@
   <h2 id="backup-title">Tes données</h2>
   <p class="soft">
     Tout reste sur ce téléphone : pas de compte, pas de serveur, rien n'est envoyé. Si tu changes de téléphone ou si tu
-    effaces les données de Chrome, ton journal disparaît : garde une sauvegarde de temps en temps.
+    {inApp ? "désinstalles l'appli" : 'effaces les données de Chrome'}, ton journal disparaît : garde une sauvegarde de
+    temps en temps.
   </p>
 
   <dl class="facts">

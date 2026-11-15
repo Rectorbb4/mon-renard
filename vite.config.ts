@@ -43,10 +43,12 @@ export default defineConfig(({ command, isPreview }) => ({
       },
       workbox: {
         // Tout ce qui est nécessaire pour fonctionner hors ligne est mis en cache à l'installation.
-        // Le modèle 3D du renard (fox.glb) en fait partie : il pèse environ 9 Mo, d'où la limite relevée.
+        // Le modèle 3D du renard (fox.glb) en fait partie : il pèse environ 2,4 Mo, d'où la limite relevée.
         globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,glb}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: 'index.html',
+        // L'APK de l'appli Android se télécharge tel quel (pas de page de l'appli à sa place)
+        navigateFallbackDenylist: [/\/android\//],
         cleanupOutdatedCaches: true
       },
       devOptions: { enabled: false }

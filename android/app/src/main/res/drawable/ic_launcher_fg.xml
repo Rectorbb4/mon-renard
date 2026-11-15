@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Le renard, rentré dans la zone visible des icônes Android (le centre 72 dp sur 108) -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/renard_portrait"
+    android:inset="20%" />

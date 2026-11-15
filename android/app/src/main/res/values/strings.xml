@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mon renard</string>
+    <string name="widget_small_label">Mon renard</string>
+    <string name="widget_large_label">Mon renard et raccourcis</string>
+    <string name="widget_small_description">Ton renard, dans l\'humeur de ton dernier check-in</string>
+    <string name="widget_large_description">Ton renard, son humeur, et les raccourcis check-in et « Je le sens »</string>
+    <string name="widget_default_label">Ton renard</string>
+    <string name="widget_default_caption">Dis-lui comment tu vas</string>
+    <string name="widget_checkin">Comment ça va ?</string>
+    <string name="widget_feel">Je le sens</string>
+</resources>

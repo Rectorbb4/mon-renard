@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AndroidCard from '../components/AndroidCard.svelte';
   import BackupCard from '../components/BackupCard.svelte';
 
   const NUMBERS = [
@@ -53,6 +54,8 @@
   </div>
 
   <BackupCard />
+
+  <AndroidCard />
 
   <div class="note credits">
     <h2>Crédits</h2>

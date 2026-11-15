@@ -1,9 +1,24 @@
 <script lang="ts">
+  import { onAppAction, takeLaunchAction } from './lib/android';
+  import { requestAction } from './lib/appAction.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
   import Accueil from './pages/Accueil.svelte';
   import Reperes from './pages/Reperes.svelte';
 
   let route: Route = $state(parseRoute(location.hash));
+
+  // Boutons du widget Android : l'accueil traite l'action, on y retourne si besoin
+  const launchAction = takeLaunchAction();
+  if (launchAction) {
+    requestAction(launchAction);
+    if (parseRoute(location.hash) !== 'accueil') location.hash = hrefFor('accueil');
+  }
+  $effect(() =>
+    onAppAction((action) => {
+      requestAction(action);
+      if (route !== 'accueil') location.hash = hrefFor('accueil');
+    })
+  );
 
   $effect(() => {
     const onHash = () => {

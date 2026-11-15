@@ -1,0 +1,17 @@
+// Appli Android « Mon renard » : l'appli web dans une fenêtre, plus le widget de l'écran d'accueil.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'mon-renard'
+include ':app'

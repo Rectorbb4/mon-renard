@@ -6,6 +6,9 @@
   import type { CheckIn, FeltEvent } from '../data/types';
   import { MOODS, moodFromScore, type MoodId } from '../fox/moods';
   import { getDB } from '../data/db';
+  import { untrack } from 'svelte';
+  import type { AppAction } from '../lib/android';
+  import { appAction, consumeAction } from '../lib/appAction.svelte';
   import { backupDue, lastBackupAt } from '../lib/backupReminder';
   import { install, promptInstall } from '../lib/install.svelte';
   import { feelIt, journal, startJournal } from '../lib/journal.svelte';
@@ -112,6 +115,27 @@
     if (next === 'checkin') openCheckIn();
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  // Boutons du widget Android : « Je le sens » et « Comment ça va ? »
+  function runAction(action: AppAction) {
+    breathing = false;
+    guide = null;
+    window.scrollTo({ top: 0 });
+    if (action === 'feel') {
+      checking = false;
+      preview = null;
+      onFeel();
+    } else {
+      felt = null;
+      openCheckIn();
+    }
+  }
+
+  $effect(() => {
+    if (appAction.count === 0) return;
+    const action = untrack(consumeAction);
+    if (action) untrack(() => runAction(action));
+  });
 
   function greeting(date: Date): string {
     const h = date.getHours();

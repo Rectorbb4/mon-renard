@@ -3,6 +3,7 @@
   // Le cercle, le texte et le renard suivent la même horloge (src/lib/breathing.ts).
   // Si l'appli passe en arrière-plan, la séance se met en pause toute seule.
   import { onMount } from 'svelte';
+  import { keepScreenOnInApp } from '../lib/android';
   import {
     DURATIONS,
     breathAt,
@@ -83,6 +84,7 @@
   }
 
   async function keepScreenOn() {
+    keepScreenOnInApp(true);
     try {
       const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } };
       wakeLock = (await nav.wakeLock?.request('screen')) ?? null;
@@ -92,6 +94,7 @@
   }
 
   function releaseWakeLock() {
+    keepScreenOnInApp(false);
     wakeLock?.release().catch(() => {});
     wakeLock = null;
   }

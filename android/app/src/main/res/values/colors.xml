@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mêmes couleurs que l'appli web (src/app.css) -->
+<resources>
+    <color name="app_bg">#EDF2F1</color>
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_fg">#16232C</color>
+    <color name="widget_muted">#55646D</color>
+    <color name="accent">#C9551F</color>
+    <color name="accent_fg">#FFFFFF</color>
+    <color name="felt">#5354C9</color>
+    <color name="felt_bg">#EDEDFA</color>
+    <color name="chip_bg">#E6FFFFFF</color>
+    <color name="chip_fg">#16232C</color>
+</resources>

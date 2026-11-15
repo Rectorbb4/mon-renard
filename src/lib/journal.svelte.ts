@@ -5,6 +5,7 @@ import { addCheckIn, ensureProfile, lastCheckIn, sleepNotedToday } from '../data
 import { getDB } from '../data/db';
 import { addFeltEvent, deleteFeltEvent, lastFeltEvent, setFeltNote } from '../data/events';
 import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
+import { isAndroidApp, updateWidget } from './android';
 
 export const journal = $state({
   /** La base est ouverte et le profil connu. */
@@ -46,6 +47,14 @@ export function startJournal(): Promise<void> {
         next: (e) => (journal.lastFelt = e ?? null),
         error: (e) => console.error(e)
       });
+      // Dans l'appli Android, le widget suit le dernier check-in et le dernier moment
+      if (isAndroidApp()) {
+        $effect.root(() => {
+          $effect(() => {
+            if (journal.ready) updateWidget($state.snapshot(journal.last), $state.snapshot(journal.lastFelt));
+          });
+        });
+      }
     } catch (e) {
       console.error(e);
       journal.error = "Le stockage du téléphone n'est pas disponible. Les check-ins ne pourront pas être gardés.";

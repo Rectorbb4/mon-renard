@@ -172,6 +172,8 @@ export class FoxScene {
   private guide: (() => number) | null = null;
   private guideMix = 0;
   private guideFull = 0;
+  /** Paupières à demi fermées (0 à 1) : renard qui somnole, pour les images du widget la nuit. */
+  private drowsy = 0;
 
   // Interaction
   private dragYaw = 0;
@@ -527,6 +529,11 @@ export class FoxScene {
     if (guide && this.busy === 'gesture') this.playBase(0.6);
   }
 
+  /** Le renard somnole (0 = éveillé, 1 = yeux presque fermés). Sert aux images du widget de nuit. */
+  setDrowsy(amount: number): void {
+    this.drowsy = Math.min(1, Math.max(0, amount));
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -611,8 +618,8 @@ export class FoxScene {
     const c = this.colors;
 
     // 2. Décor
-    this.skyUniforms.top.value.copy(c.skyTop);
-    this.skyUniforms.bottom.value.copy(c.skyBottom);
+    this.skyUniforms.top.value.copy(c.skyTop).multiplyScalar(1 - 0.45 * this.drowsy);
+    this.skyUniforms.bottom.value.copy(c.skyBottom).multiplyScalar(1 - 0.35 * this.drowsy);
     this.fog.color.copy(c.skyBottom);
     this.fog.density = b.fog;
     this.groundMat.color.copy(c.ground);
@@ -627,7 +634,9 @@ export class FoxScene {
     (this.glow.material as THREE.SpriteMaterial).color.copy(c.glow);
     (this.glow.material as THREE.SpriteMaterial).opacity = b.glowOpacity;
     this.glow.position.y = 1.6 + b.sunHeight * 1.3;
-    this.renderer.toneMappingExposure = b.exposure;
+    // Somnolent (images de nuit du widget) : lumière du soir, plus basse
+    this.renderer.toneMappingExposure = b.exposure * (1 - 0.38 * this.drowsy);
+    this.sun.intensity = b.sunIntensity * (1 - 0.5 * this.drowsy);
     this.updateWeather(dt, b);
 
     // Respiration guidée : entrée et sortie en douceur, lumière qui suit le souffle
@@ -712,8 +721,10 @@ export class FoxScene {
       }
     }
     // En respiration guidée, les yeux se plissent doucement à l'expiration
-    const calm = this.guideMix * (0.25 + 0.4 * (1 - this.guideFull));
-    const lid = Math.min(LID_MAX, (Math.max(b.lids * (1 - happy) * 0.75, calm) + blink) * LID_MAX);
+    const calm = Math.max(this.drowsy * 0.9, this.guideMix * (0.25 + 0.4 * (1 - this.guideFull)));
+    // Quand il somnole, les paupières peuvent descendre plus bas (yeux presque fermés)
+    const lidMax = LID_MAX + this.drowsy * 0.4;
+    const lid = Math.min(lidMax, (Math.max(b.lids * (1 - happy) * 0.75, calm) + blink) * lidMax);
     for (const name of ['Fox_UpperLEyelid', 'Fox_UpperREyelid']) {
       this.bones[name]?.quaternion.multiply(q.setFromAxisAngle(Z, lid));
     }

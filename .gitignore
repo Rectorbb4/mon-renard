@@ -1,5 +1,12 @@
 node_modules/
 dist/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.jks
+*.keystore
+keystore.properties
 dev-dist/
 *.log
 .DS_Store
@@ -12,3 +19,4 @@ design/
 
 # Réglages locaux de Claude Code
 .claude/
+android/build-*.txt

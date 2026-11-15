@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+// La clé de signature ne va jamais sur le dépôt : elle reste sur l'ordinateur, hors du projet.
+def signingFile = file(System.getenv('MON_RENARD_SIGNING') ?: "${System.getProperty('user.home')}/.mon-renard/signature/keystore.properties")
+def signing = new Properties()
+if (signingFile.exists()) signingFile.withInputStream { signing.load(it) }
+
+android {
+    namespace 'io.github.rectorbb4.monrenard'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.rectorbb4.monrenard'
+        minSdk 29
+        targetSdk 35
+        // À augmenter à chaque nouvelle version de l'APK (et public/android/version.json avec)
+        versionCode 1
+        versionName '1.0'
+        buildConfigField 'String', 'START_URL', '"https://rectorbb4.github.io/mon-renard/"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            if (signingFile.exists()) {
+                storeFile new File(signingFile.parentFile, signing.getProperty('storeFile'))
+                storePassword signing.getProperty('storePassword')
+                keyAlias signing.getProperty('keyAlias')
+                keyPassword signing.getProperty('keyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Version d'essai : s'installe à côté de la vraie et ouvre le serveur de dev de l'ordinateur (émulateur)
+            applicationIdSuffix '.essai'
+            versionNameSuffix '-essai'
+            // Serveur lancé avec : npx vite --host 127.0.0.1 --port 5174 (10.0.2.2 = l'ordinateur vu de l'émulateur)
+            buildConfigField 'String', 'START_URL', '"http://10.0.2.2:5174/"'
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingFile.exists() ? signingConfigs.release : null
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
