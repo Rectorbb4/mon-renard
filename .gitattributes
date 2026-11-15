@@ -1,4 +1,8 @@
-* text=auto eol=lf
+# Les scripts Windows gardent leurs fins de ligne Windows, ceux de Linux/macOS les leurs
+*.bat text eol=crlf
+gradlew text eol=lf
+# Fichiers binaires
+*.apk binary
+*.jar binary
+*.webp binary
 *.glb binary
-*.png binary
-*.woff2 binary
