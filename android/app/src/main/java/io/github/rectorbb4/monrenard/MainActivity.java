@@ -61,6 +61,10 @@ public class MainActivity extends Activity {
         s.setUserAgentString(s.getUserAgentString() + " MonRenardAndroid/" + BuildConfig.VERSION_NAME);
 
         web.addJavascriptInterface(new RenardBridge(this), "RenardAndroid");
+        // Les mesures des capteurs Bluetooth partent vers la page (src/sensors/native.ts)
+        BleSensors.get(this).setListener(json -> runOnUiThread(() -> {
+            if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('renard-ble',{detail:" + json + "}))", null);
+        }));
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
@@ -203,8 +207,79 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> requestPermissions(new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, 7));
     }
 
+    // ------------------------------------------------------------------ capteurs Bluetooth
+
+    private static final int BLE_PERMISSIONS = 8;
+    private static final int BLE_ENABLE = 9;
+    /** Capteurs demandés par la page, en attente d'une autorisation ou de l'allumage du Bluetooth. */
+    private final java.util.LinkedHashSet<String> pendingSensors = new java.util.LinkedHashSet<>();
+
+    private String[] blePermissions() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return new String[] {android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT};
+        }
+        // Android 10 et 11 : chercher des appareils Bluetooth demande la localisation
+        return new String[] {android.Manifest.permission.ACCESS_FINE_LOCATION};
+    }
+
+    /** Demandé par la page : autorisations, Bluetooth allumé, puis connexion. */
+    void startSensor(String kind) {
+        pendingSensors.add(kind);
+        askNotificationsOnce();
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        for (String p : blePermissions()) {
+            if (checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED) missing.add(p);
+        }
+        if (!missing.isEmpty()) {
+            for (String k : pendingSensors) BleSensors.get(this).emitStatus(k, "permission");
+            requestPermissions(missing.toArray(new String[0]), BLE_PERMISSIONS);
+            return;
+        }
+        continueSensors();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void continueSensors() {
+        BleSensors ble = BleSensors.get(this);
+        if (!ble.isEnabled()) {
+            try {
+                startActivityForResult(new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE), BLE_ENABLE);
+            } catch (Exception e) {
+                failPending("Le Bluetooth est éteint : active-le pour brancher tes capteurs.");
+            }
+            return;
+        }
+        if (Build.VERSION.SDK_INT < 31) {
+            android.location.LocationManager lm = getSystemService(android.location.LocationManager.class);
+            if (lm != null && !lm.isLocationEnabled()) {
+                failPending("Active la localisation du téléphone : sur cette version d'Android, elle est nécessaire pour trouver les capteurs Bluetooth.");
+                return;
+            }
+        }
+        for (String k : pendingSensors) ble.start(k);
+        pendingSensors.clear();
+    }
+
+    private void failPending(String message) {
+        for (String k : pendingSensors) BleSensors.get(this).emitEnd(k, message);
+        pendingSensors.clear();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode != BLE_PERMISSIONS) return;
+        boolean all = results.length > 0;
+        for (int r : results) all &= r == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (all) continueSensors();
+        else failPending(Build.VERSION.SDK_INT >= 31
+                ? "Sans l'autorisation « Appareils à proximité », l'appli ne peut pas trouver tes capteurs. Tu peux la donner dans les réglages de l'appli."
+                : "Sans l'autorisation de localisation, l'appli ne peut pas trouver tes capteurs Bluetooth.");
+    }
+
     @Override
     protected void onDestroy() {
+        BleSensors.get(this).setListener(null);
         web.destroy();
         super.onDestroy();
     }
@@ -219,6 +294,11 @@ public class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == BLE_ENABLE) {
+            if (resultCode == RESULT_OK) continueSensors();
+            else failPending("Le Bluetooth est éteint : active-le pour brancher tes capteurs.");
+            return;
+        }
         if (requestCode == FILE_REQUEST && fileCallback != null) {
             fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
             fileCallback = null;

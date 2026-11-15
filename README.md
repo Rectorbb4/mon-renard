@@ -47,8 +47,9 @@ Elle affiche le site en plein écran : les mises à jour du site y arrivent donc
 
 - un **petit widget** (2 × 2) : le renard, sans fond, dans l'humeur du dernier check-in ;
 - un **grand widget** (4 × 2) : le renard, son humeur, ses jauges (humeur, énergie, nuit) et les boutons *Ça va ?* et *Je le sens* ;
+- les **capteurs Bluetooth** (ceinture cardio et bague), branchés directement par l'appli ;
 - le **pouls en direct** sur les deux widgets, même appli fermée : un petit service Android prend le relais de la page,
-  avec une notification « Démo en direct » qui permet de l'arrêter (il s'arrête seul au bout d'une heure) ;
+  avec une notification qui permet de l'arrêter (il s'arrête seul au bout de 4 h, 1 h pour la démo) ;
 - un renard **animé** (il respire, bouge, cligne des yeux) et somnolent la nuit, de 22 h à 7 h ;
 - les sauvegardes rangées directement dans les téléchargements.
 
@@ -87,9 +88,11 @@ Sur l'accueil, trois **jauges** résument le dernier check-in : l'humeur (centr�
 à gauche quand elle baisse, à droite quand elle monte), l'énergie, et la nuit si elle a été notée aujourd'hui.
 Elles pâlissent quand le dernier check-in date de plus de 12 heures.
 
-Le panneau **En direct** affichera les mesures des capteurs portés : pouls, variabilité cardiaque (RMSSD) et
-conductance de la peau (GSR), avec la courbe du pouls des deux dernières minutes. Tant qu'aucun capteur n'est
-branché, une **démo** produit des valeurs simulées, toujours signalées comme telles.
+Le panneau **En direct** affiche les mesures des capteurs portés : pouls et variabilité cardiaque (RMSSD), avec la
+courbe du pouls des deux dernières minutes. *Brancher la ceinture* et *Brancher la bague* les connectent en
+Bluetooth, l'un ou l'autre ou les deux : la variabilité vient de la ceinture (elle seule envoie les intervalles
+entre battements) et, quand les deux sont là, le pouls de la ceinture, plus précis, passe avant celui de la bague.
+Une **démo** produit aussi des valeurs simulées, toujours signalées comme telles.
 
 Le code des capteurs est dans `src/sensors/` :
 
@@ -99,11 +102,20 @@ Le code des capteurs est dans `src/sensors/` :
 | `simulator.ts` | la démo (valeurs plausibles, reproductibles) |
 | `metrics.ts` | RMSSD, fenêtre glissante |
 | `ble/heartRate.ts` | la ceinture cardio : service Bluetooth standard Heart Rate (0x180D), lecture des paquets 0x2A37 |
-| `ble/esp32.ts` | le boîtier ESP32 : service personnalisé et format des paquets **proposés** (le boîtier devra les suivre) |
+| `ble/colmi.ts` | la bague Colmi : paquets de 16 octets, pouls en continu (commande 0x1E, relancée toutes les 25 s), mesure ponctuelle (0x69) en secours |
+| `ble/esp32.ts` | l'ancien boîtier ESP32 (non fabriqué) : service personnalisé et format des paquets **proposés** |
 | `ble/webBluetooth.ts` | la connexion Web Bluetooth commune |
+| `native.ts` | les capteurs branchés par l'appli Android, vus comme des sources ordinaires |
 
-Web Bluetooth marche dans Chrome (appli installée depuis Chrome), mais **pas** dans l'appli Android : il faudra
-y brancher les capteurs en Bluetooth natif, dans `LiveService.java`, qui tourne déjà en arrière-plan pour la démo.
+Web Bluetooth marche dans Chrome (appli installée depuis Chrome), mais **pas** dans la WebView de l'appli Android.
+Là, c'est l'appli qui se connecte en Bluetooth natif (`BleSensors.java`, et `ColmiProtocol.java` pour la bague, à
+garder d'accord avec `colmi.ts`) et envoie les mesures à la page (événement `renard-ble`). La connexion continue
+appli fermée : `LiveService.java` garde l'appli en vie avec une notification « Mesure en direct » (4 h au plus) et
+le widget suit le pouls. La bague ne parle qu'à une appli à la fois : l'appli QRing doit être fermée.
+
+Le protocole de la bague vient de [colmi_r02_client](https://github.com/tahnok/colmi_r02_client) et de
+[Gadgetbridge](https://gadgetbridge.org/gadgets/rings/yawell/). Ni la ceinture ni la bague n'ont encore été
+essayées pour de vrai : le premier branchement dira s'il faut ajuster.
 
 La liste du matériel (une ceinture cardio et une bague connectée Colmi R03), la façon de les porter et l'ancienne
 piste du boîtier fait maison à imprimer en 3D sont dans [`materiel/`](materiel/README.md).

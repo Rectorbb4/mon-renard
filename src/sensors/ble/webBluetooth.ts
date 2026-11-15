@@ -1,30 +1,36 @@
 // Connexion Bluetooth basse consommation (BLE) depuis le navigateur, avec Web Bluetooth.
 // Marche dans Chrome sur Android (appli installée depuis Chrome) ; PAS dans la WebView de l'appli Android :
-// là, il faudra passer par le Bluetooth natif (Java) et le pont window.RenardAndroid.
+// là, c'est le Bluetooth natif (android/…/BleSensors.java) qui s'en charge, voir src/sensors/native.ts.
 
 import type { Reading, SensorSource, SourceInfo } from '../types';
 
 // Types minimaux de Web Bluetooth (absents de TypeScript)
-interface BtCharacteristic extends EventTarget {
+export interface BtCharacteristic extends EventTarget {
   value?: DataView;
+  properties?: { write?: boolean; writeWithoutResponse?: boolean };
   startNotifications(): Promise<BtCharacteristic>;
   stopNotifications(): Promise<BtCharacteristic>;
+  writeValueWithoutResponse?(value: BufferSource): Promise<void>;
+  writeValueWithResponse?(value: BufferSource): Promise<void>;
+  writeValue?(value: BufferSource): Promise<void>;
 }
-interface BtService {
+export interface BtService {
   getCharacteristic(uuid: number | string): Promise<BtCharacteristic>;
 }
-interface BtServer {
+export interface BtServer {
   connected: boolean;
   connect(): Promise<BtServer>;
   disconnect(): void;
   getPrimaryService(uuid: number | string): Promise<BtService>;
 }
-interface BtDevice extends EventTarget {
+export interface BtDevice extends EventTarget {
   name?: string;
   gatt?: BtServer;
 }
+/** Un filtre de recherche : par service annoncé, ou par début de nom. */
+export type BtFilter = { services: (number | string)[] } | { namePrefix: string };
 interface Bluetooth {
-  requestDevice(options: { filters: { services: (number | string)[] }[]; optionalServices?: (number | string)[] }): Promise<BtDevice>;
+  requestDevice(options: { filters: BtFilter[]; optionalServices?: (number | string)[] }): Promise<BtDevice>;
 }
 
 function bluetooth(): Bluetooth | null {
@@ -34,6 +40,36 @@ function bluetooth(): Bluetooth | null {
 /** Le navigateur sait-il parler aux capteurs Bluetooth ? */
 export function hasWebBluetooth(): boolean {
   return bluetooth() != null;
+}
+
+/** Le navigateur affiche la liste des appareils trouvés ; la personne choisit le sien. */
+export async function requestDevice(filters: BtFilter[], optionalServices: (number | string)[] = []): Promise<BtDevice> {
+  const bt = bluetooth();
+  if (!bt) throw new Error('Ce navigateur ne sait pas se connecter aux capteurs Bluetooth.');
+  try {
+    return await bt.requestDevice({ filters, optionalServices });
+  } catch (e) {
+    // Fenêtre fermée sans choisir : ce n'est pas une erreur à afficher
+    if (e instanceof Error && e.name === 'NotFoundError') throw new CancelledError();
+    throw e;
+  }
+}
+
+/** La personne a fermé la fenêtre de choix sans prendre d'appareil. */
+export class CancelledError extends Error {
+  constructor() {
+    super('Aucun appareil choisi.');
+    this.name = 'CancelledError';
+  }
+}
+
+/** Envoie un paquet, sans attendre de réponse si le capteur le permet. */
+export async function writePacket(c: BtCharacteristic, bytes: Uint8Array): Promise<void> {
+  const data = new Uint8Array(bytes);
+  if (c.writeValueWithoutResponse && c.properties?.writeWithoutResponse !== false) return c.writeValueWithoutResponse(data);
+  if (c.writeValueWithResponse) return c.writeValueWithResponse(data);
+  if (c.writeValue) return c.writeValue(data);
+  throw new Error('Impossible d’écrire vers ce capteur.');
 }
 
 /** Ce qu'il faut pour brancher un capteur : son service, sa caractéristique de mesure, et comment lire un paquet. */
@@ -63,10 +99,9 @@ export function bleSource(profile: BleProfile): SensorSource {
   return {
     info: profile.info,
     async start(onReading, onEnd) {
-      const bt = bluetooth();
-      if (!bt) throw new Error("Ce navigateur ne sait pas se connecter aux capteurs Bluetooth.");
-      device = await bt.requestDevice({ filters: [{ services: [profile.service] }] });
-      if (!device.gatt) throw new Error("Cet appareil ne propose pas de connexion.");
+      // Après une pause (appli en arrière-plan), on se reconnecte au même appareil sans redemander
+      if (!device) device = await requestDevice([{ services: [profile.service] }]);
+      if (!device.gatt) throw new Error('Cet appareil ne propose pas de connexion.');
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(profile.service);
       characteristic = await service.getCharacteristic(profile.characteristic);
@@ -77,7 +112,7 @@ export function bleSource(profile: BleProfile): SensorSource {
       };
       onGone = () => {
         cleanup();
-        onEnd?.('Le capteur s’est déconnecté.');
+        onEnd?.(`${profile.info.label} : connexion perdue.`);
       };
       characteristic.addEventListener('characteristicvaluechanged', onValue);
       device.addEventListener('gattserverdisconnected', onGone);
@@ -88,7 +123,6 @@ export function bleSource(profile: BleProfile): SensorSource {
       cleanup();
       c?.stopNotifications().catch(() => undefined);
       if (device?.gatt?.connected) device.gatt.disconnect();
-      device = null;
     }
   };
 }

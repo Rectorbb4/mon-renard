@@ -44,6 +44,19 @@ pendant 90 jours sur AliExpress si la taille ne va pas.
 2. **Bague** : à l'index, capteurs côté paume, ni trop serrée ni trop lâche (elle ne doit pas tourner toute seule).
    Autonomie annoncée : plusieurs jours, avec un boîtier de recharge fourni.
 
+## Brancher les capteurs dans l'appli
+
+1. Mettre la ceinture (électrodes mouillées) et/ou la bague. **Fermer l'appli QRing** : la bague ne parle qu'à une
+   appli à la fois.
+2. Dans Mon renard, panneau *En direct* : *Brancher la ceinture*, puis *Brancher la bague*.
+   - Dans l'appli Android, la première fois, Android demande l'autorisation « Appareils à proximité » : l'accepter.
+     L'appli trouve toute seule le capteur et s'en souvient pour les fois suivantes.
+   - Dans Chrome, une fenêtre liste les appareils trouvés : choisir le sien (la bague s'appelle par exemple `R03_1A2B`).
+3. Appli fermée, la mesure continue pour le widget, avec une notification « Mesure en direct » qui permet de l'arrêter.
+
+La bague garde ses mesures automatiques de la journée (pouls, sommeil) pour l'appli QRing, qu'on peut toujours
+ouvrir à côté : il suffit de débrancher la bague dans Mon renard avant.
+
 ## Ce qui n'est pas mesuré : la conductance de la peau
 
 La conductance de la peau (GSR, ou activité électrodermale) suit la transpiration invisible des doigts, que commande

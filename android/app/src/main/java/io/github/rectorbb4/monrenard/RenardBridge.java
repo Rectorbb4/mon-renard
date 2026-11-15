@@ -48,6 +48,29 @@ public class RenardBridge {
         return stopped;
     }
 
+    /**
+     * Branche la ceinture (« ceinture ») ou la bague (« bague ») en Bluetooth natif.
+     * Renvoie false s'il n'y a pas de Bluetooth ; la suite arrive par l'événement « renard-ble ».
+     */
+    @JavascriptInterface
+    public boolean bleStart(String kind) {
+        if (!BleSensors.BELT.equals(kind) && !BleSensors.RING.equals(kind)) return false;
+        if (!BleSensors.get(activity).hasBluetooth()) return false;
+        activity.runOnUiThread(() -> activity.startSensor(kind));
+        return true;
+    }
+
+    @JavascriptInterface
+    public void bleStop(String kind) {
+        activity.runOnUiThread(() -> BleSensors.get(activity).stop(kind, null));
+    }
+
+    /** Les capteurs en route, en JSON : [{kind, state, name}]. */
+    @JavascriptInterface
+    public String bleActive() {
+        return BleSensors.get(activity).activeJson();
+    }
+
     /** Enregistre une sauvegarde JSON dans le dossier Téléchargements. Renvoie false en cas d'échec. */
     @JavascriptInterface
     public boolean saveFile(String name, String content) {

@@ -35,8 +35,11 @@ export interface SourceInfo {
 /** Une source de mesures en continu. */
 export interface SensorSource {
   readonly info: SourceInfo;
-  /** Démarre l'envoi des mesures. Peut demander une connexion (Bluetooth) et échouer. */
-  start(onReading: (r: Reading) => void, onEnd?: (reason: string | null) => void): Promise<void>;
+  /**
+   * Démarre l'envoi des mesures. Peut demander une connexion (Bluetooth) et échouer.
+   * `onNotice` reçoit les messages à montrer sans arrêter la source (« bague mal placée »…).
+   */
+  start(onReading: (r: Reading) => void, onEnd?: (reason: string | null) => void, onNotice?: (message: string) => void): Promise<void>;
   /** Arrête l'envoi. Sans effet si la source est déjà arrêtée. */
   stop(): void;
 }

@@ -1,14 +1,28 @@
 <script lang="ts">
-  // « En direct » : pouls, variabilité et conductance de la peau, seconde après seconde.
-  // Tant qu'aucun capteur n'est branché, une démo avec des valeurs simulées (toujours signalée comme telle).
+  // « En direct » : pouls et variabilité, seconde après seconde, depuis la ceinture cardio et la bague.
+  // Une démo avec des valeurs simulées permet d'essayer sans capteur (toujours signalée comme telle).
   import { isAndroidApp } from '../lib/android';
-  import { live, resumeDemoIfWanted, setDemoArousal, startDemo, stopLive } from '../lib/live.svelte';
+  import {
+    canUseSensors,
+    live,
+    resumeLive,
+    SENSOR_INFO,
+    setDemoArousal,
+    startDemo,
+    startSensor,
+    stateLabel,
+    stopLive,
+    stopSource,
+    type SensorKind
+  } from '../lib/live.svelte';
   import { journal } from '../lib/journal.svelte';
 
   const inApp = isAndroidApp();
+  const sensorsOk = canUseSensors();
+  const KINDS: SensorKind[] = ['ceinture', 'bague'];
 
-  // La démo reprend si elle était allumée à la dernière visite
-  resumeDemoIfWanted();
+  // Les capteurs encore connectés (appli Android) ou la démo reprennent à l'ouverture
+  resumeLive();
 
   $effect(() => {
     setDemoArousal(journal.last?.mood ?? null, journal.last?.energy ?? null);
@@ -40,36 +54,57 @@
 
   const beat = $derived(live.hr ? `${(60 / live.hr).toFixed(2)}s` : '1s');
   const fmt = (v: number, digits = 0) => v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+  const realSources = $derived(live.sources.filter((s) => !s.info.simulated));
+  const has = (id: string) => live.sources.some((s) => s.info.id === id);
+  /** La variabilité a besoin des intervalles entre battements : la ceinture (ou la démo). */
+  const showHrv = $derived(live.simulated || has('ceinture'));
+  const hrFromLabel = $derived(live.hrFrom === 'ceinture' ? 'ceinture' : live.hrFrom === 'bague' ? 'bague' : null);
+  const missing = $derived(KINDS.filter((k) => !has(k)));
 </script>
 
 <section class="live" aria-labelledby="live-title">
   <header>
     <h2 id="live-title"><span class="dot" class:on={live.running}></span>En direct</h2>
-    {#if live.running && live.source?.simulated}
+    {#if live.simulated}
       <span class="badge">Démo · valeurs simulées</span>
     {/if}
   </header>
 
   {#if live.running}
-    <div class="tiles">
+    {#if realSources.length}
+      <ul class="sources">
+        {#each realSources as s (s.info.id)}
+          <li>
+            <span class="name">{s.info.label}</span>
+            <span class="state" class:ok={s.state === 'connected'}>{stateLabel(s.state)}</span>
+            <button type="button" class="mini" onclick={() => stopSource(s.info.id)} aria-label="Débrancher : {s.info.label}">Arrêter</button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    <div class="tiles" class:two={!live.simulated}>
       <div class="tile heart">
         <svg class="heart-icon" viewBox="0 0 24 24" aria-hidden="true" style:animation-duration={beat}>
           <path d="M12 20.5s-7.5-4.6-9.2-9.6C1.6 7.3 4 4 7.4 4c2 0 3.6 1.1 4.6 2.7C13 5.1 14.6 4 16.6 4 20 4 22.4 7.3 21.2 10.9c-1.7 5-9.2 9.6-9.2 9.6z" />
         </svg>
         <p class="value">{live.hr ?? '…'}</p>
         <p class="unit">battements / min</p>
-        <p class="label">Pouls</p>
+        <p class="label">Pouls{#if hrFromLabel}<span class="from">&nbsp;· {hrFromLabel}</span>{/if}</p>
       </div>
       <div class="tile">
-        <p class="value">{live.hrv != null ? fmt(live.hrv) : '…'}</p>
-        <p class="unit">ms</p>
+        <p class="value">{showHrv && live.hrv != null ? fmt(live.hrv) : '…'}</p>
+        <p class="unit">{showHrv ? 'ms' : 'avec la ceinture'}</p>
         <p class="label">Variabilité</p>
       </div>
-      <div class="tile">
-        <p class="value">{live.gsr != null ? fmt(live.gsr, 1) : '…'}</p>
-        <p class="unit">µS</p>
-        <p class="label">Peau</p>
-      </div>
+      {#if live.simulated}
+        <div class="tile">
+          <p class="value">{live.gsr != null ? fmt(live.gsr, 1) : '…'}</p>
+          <p class="unit">µS</p>
+          <p class="label">Peau</p>
+        </div>
+      {/if}
     </div>
 
     {#if curve}
@@ -84,21 +119,53 @@
       </figure>
     {/if}
 
-    <p class="note">
-      Valeurs inventées pour essayer l'affichage{#if inApp}, ici et sur le widget (une notification le rappelle quand
-      l'appli est fermée){/if}. La variabilité est l'écart
-      entre deux battements (RMSSD) ; « peau » est sa conductance (GSR). Ta ceinture et ton boîtier prendront le relais.
-    </p>
-    <button type="button" class="stop" onclick={stopLive}>Arrêter la démo</button>
+    {#if live.notice}
+      <p class="notice" role="status">{live.notice}</p>
+    {/if}
+    {#if live.error}
+      <p class="error" role="alert">{live.error}</p>
+    {/if}
+
+    {#if live.simulated}
+      <p class="note">
+        Valeurs inventées pour essayer l'affichage{#if inApp}, ici et sur le widget (une notification le rappelle quand
+        l'appli est fermée){/if}. La variabilité est l'écart entre deux battements (RMSSD) ; « peau » est sa conductance
+        (GSR).
+      </p>
+      <button type="button" class="stop" onclick={stopLive}>Arrêter la démo</button>
+    {:else}
+      <p class="note">
+        La variabilité (RMSSD) se calcule avec la ceinture, sur la dernière minute. Si les deux capteurs sont branchés,
+        le pouls de la ceinture, plus précis, passe en premier. {#if inApp}Appli fermée, la mesure continue pour le widget
+        (une notification permet de l'arrêter).{/if}
+      </p>
+      {#if missing.length && sensorsOk}
+        <div class="actions">
+          {#each missing as k (k)}
+            <button type="button" class="start" onclick={() => startSensor(k)}>Brancher la {SENSOR_INFO[k].label.toLowerCase()}</button>
+          {/each}
+        </div>
+      {/if}
+    {/if}
   {:else}
     <p class="intro">
-      Quand ta ceinture cardio et ton boîtier seront branchés, ton pouls, sa variabilité et la conductance de ta peau
-      s'afficheront ici en direct{#if inApp}, et sur le widget{/if}.
+      Branche ta ceinture cardio et ta bague : ton pouls et sa variabilité s'afficheront ici en direct{#if inApp}, et
+      sur le widget{/if}. Mets la ceinture (électrodes mouillées) ou la bague avant d'appuyer.
     </p>
     {#if live.error}
       <p class="error" role="alert">{live.error}</p>
     {/if}
-    <button type="button" class="start" onclick={startDemo}>Essayer avec des valeurs simulées</button>
+    {#if sensorsOk}
+      <div class="actions">
+        <button type="button" class="start" onclick={() => startSensor('ceinture')}>Brancher la ceinture</button>
+        <button type="button" class="start" onclick={() => startSensor('bague')}>Brancher la bague</button>
+      </div>
+    {:else}
+      <p class="intro">
+        Ce navigateur ne sait pas se connecter aux capteurs : ouvre Mon renard dans Chrome, ou dans l'appli Android.
+      </p>
+    {/if}
+    <button type="button" class="demo" onclick={startDemo}>Essayer avec des valeurs simulées</button>
   {/if}
 </section>
 
@@ -154,10 +221,46 @@
     font-weight: 700;
   }
 
+  .sources {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+
+  .sources li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 12px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    font-size: 15px;
+  }
+
+  .sources .name {
+    font-weight: 700;
+  }
+
+  .sources .state {
+    flex: 1;
+    color: var(--muted);
+  }
+
+  .sources .state.ok {
+    color: var(--heart);
+    font-weight: 700;
+  }
+
   .tiles {
     display: grid;
     grid-template-columns: 1.25fr 1fr 1fr;
     gap: 8px;
+  }
+
+  .tiles.two {
+    grid-template-columns: 1.25fr 1fr;
   }
 
   .tile {
@@ -224,6 +327,11 @@
     font-size: 14px;
   }
 
+  .from {
+    font-weight: 400;
+    color: var(--muted);
+  }
+
   .curve {
     margin: 0;
     display: grid;
@@ -258,10 +366,24 @@
     color: var(--muted);
   }
 
+  .notice {
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--heart) 10%, var(--surface));
+    font-size: 15px;
+    font-weight: 700;
+  }
+
   .error {
     color: var(--urgent);
     font-weight: 700;
     font-size: 15px;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
   }
 
   button {
@@ -278,10 +400,26 @@
     color: var(--heart);
   }
 
-  .stop {
+  .stop,
+  .demo {
     border: 1.5px solid var(--line);
     background: transparent;
     color: var(--fg);
+  }
+
+  .demo {
+    min-height: 44px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .mini {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1.5px solid var(--line);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
   }
 
   @media (max-width: 360px) {

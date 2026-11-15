@@ -8,6 +8,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Capteurs portés (ceinture cardio, bague) en Bluetooth basse consommation -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Android 10 et 11 : anciennes autorisations Bluetooth, et la localisation pour chercher les appareils -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
 
     <application
         android:allowBackup="false"
@@ -30,11 +39,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Pouls en direct pendant que l'appli est en arrière-plan (pour l'instant : la démo, valeurs simulées) -->
+        <!-- Pouls en direct pendant que l'appli est en arrière-plan : capteurs Bluetooth, ou la démo (valeurs simulées) -->
         <service
             android:name=".LiveService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|connectedDevice">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Affiche sur le widget le pouls mesuré en direct pendant que l'appli est en arrière-plan" />
