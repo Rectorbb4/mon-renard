@@ -8,9 +8,9 @@ Prix relevés le 15 novembre 2026.
 | Pièce | Où | Prix |
 |---|---|---|
 | Ceinture cardio Coospo H6 (envoie les intervalles entre battements) | [Amazon](https://www.amazon.fr/dp/B07JPD924Y) | 26,99 € (+ port possible sous 45 €) |
-| Bague connectée Colmi R02 (pouls, oxygène du sang, pas, sommeil) | [AliExpress, boutique officielle Colmi](https://fr.aliexpress.com/item/1005007942688300.html) | 28,99 €, port offert |
+| Bague connectée Colmi R02, dorée, taille 11 (pouls, oxygène du sang, pas, sommeil) | [AliExpress, boutique officielle Colmi](https://fr.aliexpress.com/item/1005007399878674.html) | 29,99 €, port offert |
 
-**Total : environ 56 €.**
+**Total : environ 57 €.** Mi-novembre 2026, la taille 11 n'était plus disponible qu'en doré.
 
 - **La ceinture** donne la variabilité cardiaque précise, battement par battement : la mesure la plus utile pour l'humeur.
   Elle utilise le service Bluetooth standard du pouls, déjà lu par l'appli (`src/sensors/ble/heartRate.ts`).
