@@ -42,6 +42,15 @@ export async function addCheckIn(db: RenardDB, profileId: number, input: CheckIn
   return checkin;
 }
 
+export function deleteCheckIn(db: RenardDB, id: number): Promise<void> {
+  return db.checkins.delete(id);
+}
+
+/** Remet un check-in effacé, avec le même identifiant (bouton « Annuler »). */
+export async function restoreCheckIn(db: RenardDB, checkin: CheckIn): Promise<void> {
+  await db.checkins.put(checkin);
+}
+
 /** Le check-in le plus récent du profil, ou undefined s'il n'y en a pas encore. */
 export function lastCheckIn(db: RenardDB, profileId: number): Promise<CheckIn | undefined> {
   return db.checkins

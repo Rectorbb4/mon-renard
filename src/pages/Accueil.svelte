@@ -44,9 +44,14 @@
   const gauges = $derived(gaugeValues(journal.last, journal.lastSleep, now));
 
   $effect(() => {
-    const timer = setInterval(() => (now = Date.now()), 30_000);
+    const tick = () => (now = Date.now());
+    const timer = setInterval(tick, 30_000);
+    // Au retour sur l'appli, l'heure est remise à jour tout de suite (les minuteries dorment en arrière-plan)
+    const onVisible = () => document.visibilityState === 'visible' && tick();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       clearTimeout(thanksTimer);
       clearTimeout(feltTimer);
     };
@@ -149,14 +154,17 @@
     return 'Bonsoir';
   }
 
-  const today = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  // Suivent l'horloge : l'appli peut rester ouverte en arrière-plan d'un jour à l'autre
+  const dateFormat = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = $derived(dateFormat.format(now));
+  const hello = $derived(greeting(new Date(now)));
 </script>
 
 <section class="home">
   {#if !breathing}
     <header>
       <p class="date">{today}</p>
-      <h1>{greeting(new Date())}</h1>
+      <h1>{hello}</h1>
     </header>
   {/if}
 

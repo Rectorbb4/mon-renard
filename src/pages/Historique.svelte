@@ -6,22 +6,29 @@
   import { getDB } from '../data/db';
   import { feltEventsBetween } from '../data/events';
   import type { CheckIn, FeltEvent } from '../data/types';
-  import { MOODS, moodFromScore } from '../fox/moods';
-  import { addDays, averageMood, dayLabel, groupByDay, periodStart, startOfDay } from '../lib/history';
-  import { journal, startJournal } from '../lib/journal.svelte';
+  import { MOOD_IDS, MOODS, moodFromScore } from '../fox/moods';
+  import { addDays, dayLabel, groupByDay, moodShare, periodStart, startOfDay } from '../lib/history';
+  import { journal, removeEntry, restoreEntry, startJournal, type Entry } from '../lib/journal.svelte';
   import { energyLabel, sleepLabel } from '../lib/labels';
   import { hrefFor } from '../lib/router';
 
+  type Period = 7 | 30 | 90;
+  const PERIODS: { days: Period; label: string }[] = [
+    { days: 7, label: '7 jours' },
+    { days: 30, label: '30 jours' },
+    { days: 90, label: '3 mois' }
+  ];
   const PERIOD_KEY = 'mon-renard:periode-historique';
-  function savedPeriod(): 7 | 30 {
+  function savedPeriod(): Period {
     try {
-      return localStorage.getItem(PERIOD_KEY) === '30' ? 30 : 7;
+      const saved = Number(localStorage.getItem(PERIOD_KEY));
+      return saved === 30 || saved === 90 ? saved : 7;
     } catch {
       return 7;
     }
   }
 
-  let days = $state<7 | 30>(savedPeriod());
+  let days = $state<Period>(savedPeriod());
   const now = Date.now();
   const from = $derived(periodStart(days, now));
   const to = addDays(startOfDay(now), 1);
@@ -30,7 +37,41 @@
   let events = $state.raw<FeltEvent[]>([]);
   let loaded = $state(false);
 
-  function choose(d: 7 | 30) {
+  // Effacer une saisie : tout de suite, avec quelques secondes pour annuler
+  // raw : la saisie doit rester un objet simple pour être remise telle quelle dans la base
+  let undo = $state.raw<{ entry: Entry; text: string } | null>(null);
+  let undoTimer: ReturnType<typeof setTimeout> | undefined;
+  let deleteError = $state<string | null>(null);
+
+  async function remove(entry: Entry, time: string) {
+    deleteError = null;
+    try {
+      await removeEntry(entry);
+      undo = { entry, text: entry.kind === 'checkin' ? `Check-in de ${time} effacé` : `Moment de ${time} effacé` };
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(() => (undo = null), 8000);
+    } catch (e) {
+      console.error(e);
+      deleteError = "Cette saisie n'a pas pu être effacée. Réessaie.";
+    }
+  }
+
+  async function cancelRemove() {
+    if (!undo) return;
+    const { entry } = undo;
+    undo = null;
+    clearTimeout(undoTimer);
+    try {
+      await restoreEntry(entry);
+    } catch (e) {
+      console.error(e);
+      deleteError = "La saisie n'a pas pu être remise.";
+    }
+  }
+
+  $effect(() => () => clearTimeout(undoTimer));
+
+  function choose(d: Period) {
     days = d;
     try {
       localStorage.setItem(PERIOD_KEY, String(d));
@@ -70,7 +111,8 @@
     };
   });
 
-  const average = $derived(averageMood(checkins));
+  const shares = $derived(moodShare(checkins));
+  const percent = new Intl.NumberFormat('fr-FR', { style: 'percent', maximumFractionDigits: 0 });
   const energyAvg = $derived(checkins.length ? checkins.reduce((s, c) => s + c.energy, 0) / checkins.length : null);
   const nights = $derived(checkins.filter((c) => c.sleep != null));
   const sleepAvg = $derived(nights.length ? nights.reduce((s, c) => s + (c.sleep ?? 0), 0) / nights.length : null);
@@ -82,8 +124,9 @@
   <header>
     <h1>Historique</h1>
     <div class="period" role="radiogroup" aria-label="Période">
-      <button type="button" role="radio" aria-checked={days === 7} onclick={() => choose(7)}>7 jours</button>
-      <button type="button" role="radio" aria-checked={days === 30} onclick={() => choose(30)}>30 jours</button>
+      {#each PERIODS as p (p.days)}
+        <button type="button" role="radio" aria-checked={days === p.days} onclick={() => choose(p.days)}>{p.label}</button>
+      {/each}
     </div>
   </header>
 
@@ -94,11 +137,36 @@
       <a class="cta" href={hrefFor('accueil')}>Faire un check-in</a>
     </div>
   {:else if loaded}
+    {#if shares}
+      <article class="card share-card">
+        <h2>Où était ton humeur</h2>
+        <p class="share-sub">
+          Sur {shares.days} {shares.days > 1 ? 'journées notées' : 'journée notée'}. Chaque journée compte autant.
+        </p>
+        <div class="share-bar" role="img" aria-label={MOOD_IDS.filter((id) => shares.share[id] > 0)
+            .map((id) => `${MOODS[id].label} ${percent.format(shares.share[id])}`)
+            .join(', ')}>
+          {#each MOOD_IDS as id (id)}
+            {#if shares.share[id] > 0}
+              <span class="seg" style:flex-grow={shares.share[id]} style:--c={MOODS[id].sky.bottom}></span>
+            {/if}
+          {/each}
+        </div>
+        <ul class="share-legend">
+          {#each MOOD_IDS as id (id)}
+            {#if shares.share[id] > 0}
+              <li>
+                <span class="swatch" style:--c={MOODS[id].sky.bottom}></span>
+                {MOODS[id].label}
+                <strong>{percent.format(shares.share[id])}</strong>
+              </li>
+            {/if}
+          {/each}
+        </ul>
+      </article>
+    {/if}
+
     <div class="stats">
-      <div class="stat">
-        <span class="stat-label">Humeur moyenne</span>
-        <span class="stat-value">{average == null ? '—' : MOODS[moodFromScore(average)].label}</span>
-      </div>
       <div class="stat">
         <span class="stat-label">Énergie moyenne</span>
         <span class="stat-value">{energyAvg == null ? '—' : energyLabel(energyAvg)}</span>
@@ -108,8 +176,12 @@
         <span class="stat-value">{sleepAvg == null ? '—' : sleepLabel(sleepAvg)}</span>
       </div>
       <div class="stat">
-        <span class="stat-label">Check-ins · moments</span>
-        <span class="stat-value">{checkins.length} · {events.length}</span>
+        <span class="stat-label">Check-ins</span>
+        <span class="stat-value">{checkins.length}</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Moments « je le sens »</span>
+        <span class="stat-value">{events.length}</span>
       </div>
     </div>
 
@@ -125,7 +197,7 @@
       />
       <p class="legend">
         <span class="key line"></span> ton humeur
-        <span class="key felt"></span> « je le sens »
+        <span class="key felt" class:point={days === 90}></span> « je le sens »
       </p>
     </article>
 
@@ -142,7 +214,7 @@
       <p class="legend">
         <span class="key line"></span> énergie
         <span class="key dot"></span> nuit
-        <span class="key felt"></span> « je le sens »
+        <span class="key felt" class:point={days === 90}></span> « je le sens »
       </p>
     </article>
 
@@ -152,8 +224,9 @@
         <h3>{dayLabel(day.day, now)}</h3>
         <ul>
           {#each day.items as item (item.kind + item.at)}
+            {@const time = clock.format(item.at)}
             <li>
-              <span class="time">{clock.format(item.at)}</span>
+              <span class="time">{time}</span>
               {#if item.kind === 'checkin'}
                 {@const m = MOODS[moodFromScore(item.checkin.mood)]}
                 <span class="mark" style:--top={m.sky.top} style:--bottom={m.sky.bottom}></span>
@@ -171,6 +244,24 @@
                   {#if item.event.note}<span class="quote">« {item.event.note} »</span>{/if}
                 </span>
               {/if}
+              <button
+                class="remove"
+                type="button"
+                aria-label={item.kind === 'checkin' ? `Effacer le check-in de ${time}` : `Effacer le moment de ${time}`}
+                onclick={() =>
+                  remove(item.kind === 'checkin' ? { kind: 'checkin', checkin: item.checkin } : { kind: 'felt', event: item.event }, time)}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path
+                    d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
             </li>
           {/each}
         </ul>
@@ -179,6 +270,17 @@
   {/if}
 
   <p class="note">Ces courbes t'aident à repérer des tendances. Elles ne remplacent pas un avis médical.</p>
+
+  <div class="toast-zone" aria-live="polite">
+    {#if undo}
+      <div class="toast">
+        <span>{undo.text}</span>
+        <button type="button" onclick={cancelRemove}>Annuler</button>
+      </div>
+    {:else if deleteError}
+      <div class="toast error" role="alert">{deleteError}</div>
+    {/if}
+  </div>
 </section>
 
 <style>
@@ -208,7 +310,7 @@
 
   .period button {
     min-height: 40px;
-    padding: 0 16px;
+    padding: 0 13px;
     border: 0;
     border-radius: 999px;
     background: transparent;
@@ -294,6 +396,14 @@
     border-left: 2px dashed var(--felt);
   }
 
+  .key.felt.point {
+    width: 8px;
+    height: 8px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--felt);
+  }
+
   .key.dot {
     width: 10px;
     height: 10px;
@@ -326,10 +436,10 @@
 
   .day li {
     display: grid;
-    grid-template-columns: 46px 16px 1fr;
+    grid-template-columns: 46px 16px 1fr 36px;
     align-items: start;
     gap: 10px;
-    padding: 10px 12px;
+    padding: 10px 4px 10px 12px;
     border-radius: 14px;
     background: var(--surface);
     border: 1px solid var(--line);
@@ -369,6 +479,134 @@
 
   .felt-label {
     color: var(--felt);
+  }
+
+  .remove {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    margin: -6px 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  .remove:hover,
+  .remove:focus-visible {
+    opacity: 1;
+    background: var(--surface-2);
+  }
+
+  .share-card {
+    padding: 16px;
+    gap: 10px;
+  }
+
+  .share-card h2 {
+    padding-left: 0;
+  }
+
+  .share-sub {
+    margin-top: -6px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  .share-bar {
+    display: flex;
+    gap: 2px;
+    height: 18px;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .seg {
+    flex-basis: 0;
+    min-width: 4px;
+    background: var(--c);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
+  }
+
+  .share-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    font-size: 15px;
+  }
+
+  .share-legend li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .share-legend strong {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18);
+  }
+
+  .toast-zone {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);
+    display: grid;
+    justify-items: center;
+    padding: 0 16px;
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: 480px;
+    width: 100%;
+    padding: 8px 8px 8px 18px;
+    border-radius: 16px;
+    background: var(--fg);
+    color: var(--bg);
+    font-size: 15px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+    pointer-events: auto;
+  }
+
+  .toast span {
+    flex: 1;
+  }
+
+  .toast button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .toast.error {
+    padding: 14px 18px;
+    background: var(--urgent);
+    color: var(--urgent-fg);
   }
 
   .quote {

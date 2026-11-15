@@ -31,6 +31,11 @@ export function deleteFeltEvent(db: RenardDB, id: number): Promise<void> {
   return db.events.delete(id);
 }
 
+/** Remet un moment effacé, avec le même identifiant (bouton « Annuler »). */
+export async function restoreFeltEvent(db: RenardDB, event: FeltEvent): Promise<void> {
+  await db.events.put(event);
+}
+
 export function lastFeltEvent(db: RenardDB, profileId: number): Promise<FeltEvent | undefined> {
   return db.events
     .where('[profileId+at]')

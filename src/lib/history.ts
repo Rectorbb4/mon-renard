@@ -1,6 +1,7 @@
 // Calculs de l'historique : périodes, graduations par jour, regroupement du journal par journée.
 
 import type { CheckIn, FeltEvent } from '../data/types';
+import { MOOD_IDS, moodFromScore, type MoodId } from '../fox/moods';
 
 /** Minuit (heure locale) du jour qui contient `at`. */
 export function startOfDay(at: number): number {
@@ -30,9 +31,32 @@ export function dayTicks(from: number, to: number, max = 7): number[] {
   return days.filter((_, i) => i % step === 0).reverse();
 }
 
-export function averageMood(checkins: CheckIn[]): number | null {
+export interface MoodShare {
+  /** Part de chaque humeur, de 0 à 1 (la somme fait 1). */
+  share: Record<MoodId, number>;
+  /** Nombre de journées avec au moins un check-in. */
+  days: number;
+}
+
+/**
+ * Où était l'humeur sur la période : chaque journée compte autant, quel que soit le nombre de check-ins
+ * (deux check-ins le même jour comptent chacun pour une demi-journée). Plus juste qu'une moyenne,
+ * qui ferait d'un creux et d'un emballement un faux « équilibre ».
+ */
+export function moodShare(checkins: CheckIn[]): MoodShare | null {
   if (!checkins.length) return null;
-  return checkins.reduce((sum, c) => sum + c.mood, 0) / checkins.length;
+  const perDay = new Map<number, CheckIn[]>();
+  for (const c of checkins) {
+    const day = startOfDay(c.at);
+    const list = perDay.get(day);
+    if (list) list.push(c);
+    else perDay.set(day, [c]);
+  }
+  const share = Object.fromEntries(MOOD_IDS.map((id) => [id, 0])) as Record<MoodId, number>;
+  for (const list of perDay.values()) {
+    for (const c of list) share[moodFromScore(c.mood)] += 1 / list.length / perDay.size;
+  }
+  return { share, days: perDay.size };
 }
 
 export type JournalItem = { kind: 'checkin'; at: number; checkin: CheckIn } | { kind: 'felt'; at: number; event: FeltEvent };

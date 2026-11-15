@@ -77,6 +77,7 @@
 
     const short = to - from <= 8 * 86400_000;
     const dense = !short;
+    const veryDense = to - from > 45 * 86400_000;
     // Assez de place pour chaque date, et la dernière graduation est aujourd'hui
     const ticks = dayTicks(from, to - 1, Math.max(3, Math.floor((width - 44) / (short ? 38 : 62)))).map((d) => d / 1000);
     const textColor = v('--fg');
@@ -87,16 +88,21 @@
           { value: 0.5, text: 'Ça va' },
           { value: 0, text: 'À plat' }
         ];
-    const fmt = new Intl.DateTimeFormat('fr-FR', short ? { weekday: 'short', day: 'numeric' } : { day: 'numeric', month: 'short' });
+    // Sur 7 jours, le jour de la semaine au-dessus du numéro : « lun. » puis « 9 », pour que les dates ne se touchent pas
+    const weekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'short' });
+    const dayMonth = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+    const tickLabel = (ms: number) => (short ? `${weekday.format(ms)}\n${new Date(ms).getDate()}` : dayMonth.format(ms));
 
     const series: uPlot.Series[] = [
       {},
       {
         label: isMood ? 'Humeur' : 'Énergie',
         stroke: accent,
-        width: dense ? 2 : 2.5,
+        width: veryDense ? 1.5 : dense ? 2 : 2.5,
         spanGaps: true,
-        points: { show: true, size: dense ? 5 : 8, width: dense ? 1.5 : 2, stroke: accent, fill: surface }
+        points: veryDense
+          ? { show: false }
+          : { show: true, size: dense ? 5 : 8, width: dense ? 1.5 : 2, stroke: accent, fill: surface }
       }
     ];
     if (!isMood) {
@@ -104,7 +110,7 @@
         label: 'Nuit',
         stroke: sleepColor,
         paths: () => null,
-        points: { show: true, size: dense ? 7 : 10, width: 0, fill: sleepColor, stroke: sleepColor }
+        points: { show: true, size: veryDense ? 5 : dense ? 7 : 10, width: 0, fill: sleepColor, stroke: sleepColor }
       });
     }
 
@@ -124,12 +130,12 @@
         {
           stroke: muted,
           font,
-          size: 34,
+          size: short ? 46 : 34,
           gap: 6,
           ticks: { show: false },
           grid: { stroke: line, width: 1 },
           splits: () => ticks,
-          values: (_u, splits) => splits.map((s) => fmt.format(s * 1000))
+          values: (_u, splits) => splits.map((s) => tickLabel(s * 1000))
         },
         {
           // Les libellés sont dessinés dans la courbe (voir plus bas) pour laisser toute la largeur aux jours
@@ -181,6 +187,13 @@
             for (const e of events) {
               const px = u.valToPos(e.at / 1000, 'x', true);
               if (px < bbox.left - 1 || px > bbox.left + bbox.width + 1) continue;
+              if (veryDense) {
+                // Sur 3 mois, des traits pleine hauteur cacheraient la courbe : un simple repère en haut
+                ctx.beginPath();
+                ctx.arc(px, bbox.top + 5 * dpr, 3 * dpr, 0, Math.PI * 2);
+                ctx.fill();
+                continue;
+              }
               ctx.beginPath();
               ctx.moveTo(px, bbox.top + 6 * dpr);
               ctx.lineTo(px, bbox.top + bbox.height);

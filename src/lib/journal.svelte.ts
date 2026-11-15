@@ -1,9 +1,17 @@
 // Le lien entre la base locale et l'interface : profil actif et dernier check-in, tenus à jour en direct.
 
 import { liveQuery } from 'dexie';
-import { addCheckIn, ensureProfile, lastCheckIn, lastSleepCheckIn, sleepNotedToday } from '../data/checkins';
+import {
+  addCheckIn,
+  deleteCheckIn,
+  ensureProfile,
+  lastCheckIn,
+  lastSleepCheckIn,
+  restoreCheckIn,
+  sleepNotedToday
+} from '../data/checkins';
 import { getDB } from '../data/db';
-import { addFeltEvent, deleteFeltEvent, lastFeltEvent, setFeltNote } from '../data/events';
+import { addFeltEvent, deleteFeltEvent, lastFeltEvent, restoreFeltEvent, setFeltNote } from '../data/events';
 import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
 import { isAndroidApp, updateWidget } from './android';
 
@@ -101,6 +109,24 @@ export async function noteFelt(id: number, note: string): Promise<void> {
 /** Annule un moment noté par erreur. */
 export async function cancelFelt(id: number): Promise<void> {
   await deleteFeltEvent(getDB(), id);
+}
+
+/** Une saisie du journal : un check-in ou un moment « je le sens ». */
+export type Entry = { kind: 'checkin'; checkin: CheckIn } | { kind: 'felt'; event: FeltEvent };
+
+/** Efface une saisie du journal (le renard et le widget suivent tout seuls). */
+export async function removeEntry(entry: Entry): Promise<void> {
+  const db = getDB();
+  if (entry.kind === 'checkin') {
+    if (entry.checkin.id != null) await deleteCheckIn(db, entry.checkin.id);
+  } else if (entry.event.id != null) await deleteFeltEvent(db, entry.event.id);
+}
+
+/** Remet une saisie qui vient d'être effacée. */
+export async function restoreEntry(entry: Entry): Promise<void> {
+  const db = getDB();
+  if (entry.kind === 'checkin') await restoreCheckIn(db, entry.checkin);
+  else await restoreFeltEvent(db, entry.event);
 }
 
 export async function isSleepNotedToday(): Promise<boolean> {

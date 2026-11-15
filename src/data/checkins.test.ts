@@ -5,10 +5,12 @@ import {
   WORD_MAX,
   addCheckIn,
   checkInsBetween,
+  deleteCheckIn,
   ensureProfile,
   lastCheckIn,
   lastSleepCheckIn,
   normalizeCheckIn,
+  restoreCheckIn,
   sleepNotedToday,
   startOfDay
 } from './checkins';
@@ -100,5 +102,17 @@ describe('base locale', () => {
     const s = await lastSleepCheckIn(db, me);
     expect(s?.sleep).toBe(0.75);
     expect(s?.at).toBe(NOON - 3 * HOUR);
+  });
+
+  it('efface un check-in puis le remet à l’identique', async () => {
+    freshDB();
+    const me = await ensureProfile(db);
+    await addCheckIn(db, me, { mood: 0, energy: 0.5 }, NOON - HOUR);
+    const last = await addCheckIn(db, me, { mood: 0.4, energy: 0.6, word: 'oups' }, NOON);
+    await deleteCheckIn(db, last.id!);
+    expect((await lastCheckIn(db, me))?.at).toBe(NOON - HOUR);
+    await restoreCheckIn(db, last);
+    expect(await lastCheckIn(db, me)).toEqual(last);
+    expect(await db.checkins.count()).toBe(2);
   });
 });

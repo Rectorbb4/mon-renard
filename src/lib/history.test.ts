@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CheckIn, FeltEvent } from '../data/types';
-import { addDays, averageMood, dayLabel, dayTicks, groupByDay, periodStart, startOfDay } from './history';
+import { addDays, dayLabel, dayTicks, groupByDay, moodShare, periodStart, startOfDay } from './history';
 import { energyLabel, sleepLabel } from './labels';
 
 const now = new Date(2026, 10, 15, 14, 0).getTime();
@@ -44,9 +44,15 @@ describe('journal', () => {
     expect(dayLabel(new Date(2026, 10, 9).getTime(), now)).toBe('lundi 9 novembre');
   });
 
-  it('calcule l’humeur moyenne', () => {
-    expect(averageMood([])).toBeNull();
-    expect(averageMood([checkin(1, -1), checkin(2, 0.5)])).toBe(-0.25);
+  it('répartit les journées entre les humeurs, chaque jour comptant autant', () => {
+    expect(moodShare([])).toBeNull();
+    // Jour 1 : un creux et un emballement (un demi-jour chacun) ; jour 2 : un équilibre
+    const r = moodShare([checkin(at(13, 9), -0.9), checkin(at(13, 20), 0.8), checkin(at(14, 9), 0)])!;
+    expect(r.days).toBe(2);
+    expect(r.share.creux).toBeCloseTo(0.25);
+    expect(r.share.emballement).toBeCloseTo(0.25);
+    expect(r.share.equilibre).toBeCloseTo(0.5);
+    expect(Object.values(r.share).reduce((a, b) => a + b, 0)).toBeCloseTo(1);
   });
 });
 
