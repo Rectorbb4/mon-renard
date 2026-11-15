@@ -8,16 +8,18 @@ Prix relevés le 15 novembre 2026.
 | Pièce | Où | Prix |
 |---|---|---|
 | Ceinture cardio Coospo H6 (envoie les intervalles entre battements) | [Amazon](https://www.amazon.fr/dp/B07JPD924Y) | 26,99 € (+ port possible sous 45 €) |
-| Bague connectée Colmi R02, dorée, taille 11 (pouls, oxygène du sang, pas, sommeil) | [AliExpress, boutique officielle Colmi](https://fr.aliexpress.com/item/1005007399878674.html) | 29,99 €, port offert |
+| Bague connectée Colmi R03, noire, taille 11 (pouls, oxygène du sang, pas, sommeil) | [AliExpress, boutique officielle Colmi](https://fr.aliexpress.com/item/1005007243540237.html) | 28,99 €, port offert |
 
-**Total : environ 57 €.** Mi-novembre 2026, la taille 11 n'était plus disponible qu'en doré.
+**Total : environ 56 €.** La R03 est la cousine de la R02 (même appli QRing, même protocole, étanche IP68).
+Mi-novembre 2026, la R02 n'existait plus en noir en taille 11 : seulement en doré.
 
 - **La ceinture** donne la variabilité cardiaque précise, battement par battement : la mesure la plus utile pour l'humeur.
   Elle utilise le service Bluetooth standard du pouls, déjà lu par l'appli (`src/sensors/ble/heartRate.ts`).
 - **La bague** mesure en continu, jour et nuit, sans rien qui dépasse. Son protocole Bluetooth n'est pas chiffré et a été
-  décodé par des passionnés ([colmi_r02_client](https://github.com/tahnok/colmi_r02_client)) : l'appli pourra la lire
-  sans passer par l'appli du fabricant. Il faut la Colmi R02 qui s'utilise avec l'appli **QRing** : des copies vendues
-  sous le même nom ont un autre matériel et ne sont pas compatibles.
+  décodé par des passionnés ([colmi_r02_client](https://github.com/tahnok/colmi_r02_client),
+  [Gadgetbridge](https://gadgetbridge.org/gadgets/rings/yawell/)) : l'appli pourra la lire sans passer par l'appli du
+  fabricant. Modèles Colmi compatibles : R02, R03, R06, R09, R10, R12, à condition qu'ils s'utilisent avec l'appli
+  **QRing** : des copies vendues sous le même nom ont un autre matériel et ne sont pas compatibles.
 
 ### Trouver la taille de la bague
 
@@ -27,7 +29,7 @@ La bague se porte de préférence à **l'index** de la main qui travaille le moi
 2. Marquer au stylo l'endroit où la bande se rejoint, puis mesurer la longueur à plat avec une règle, en millimètres.
 3. Lire la taille ci-dessous. **Entre deux tailles, prendre la plus grande** : la bague est épaisse à l'intérieur.
 
-| Taille Colmi | 8 | 9 | 10 | 11 | 12 |
+| Taille Colmi (R02 et R03) | 8 | 9 | 10 | 11 | 12 |
 |---|---|---|---|---|---|
 | Diamètre intérieur | 18,1 mm | 18,9 mm | 19,8 mm | 20,3 à 20,6 mm | 21,3 mm |
 | Tour de doigt | 57 mm | 59 mm | 62 mm | 64 à 65 mm | 67 mm |
