@@ -5,7 +5,17 @@
   import type { FoxScene } from '../fox/FoxScene';
   import { MOODS, type MoodId } from '../fox/moods';
 
-  let { mood }: { mood: MoodId } = $props();
+  let {
+    mood,
+    compact = false,
+    reactSignal = 0
+  }: {
+    mood: MoodId;
+    /** Scène moins haute, pour laisser la place au check-in. */
+    compact?: boolean;
+    /** Chaque changement de ce nombre fait réagir le renard. */
+    reactSignal?: number;
+  } = $props();
 
   let host: HTMLDivElement;
   let scene = $state.raw<FoxScene | null>(null);
@@ -62,6 +72,16 @@
     scene?.setMood(next);
   });
 
+  let lastSignal = 0;
+  $effect(() => {
+    const signal = reactSignal;
+    if (signal !== lastSignal && scene) {
+      lastSignal = signal;
+      // Laisse d'abord l'humeur commencer à changer, puis il réagit
+      setTimeout(() => scene?.react(), 350);
+    }
+  });
+
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -73,6 +93,7 @@
 <div
   class="stage"
   class:ready={status === 'ready'}
+  class:compact
   role="img"
   aria-label={`Ton renard. ${MOODS[mood].caption}`}
 >
@@ -100,11 +121,21 @@
     position: relative;
     border-radius: var(--radius);
     background: linear-gradient(var(--sky-top), var(--sky-bottom));
-    aspect-ratio: 4 / 5;
-    max-height: 62vh;
+    height: min(54vh, 112vw, 600px);
     width: 100%;
     overflow: hidden;
     isolation: isolate;
+    transition: height 0.4s ease;
+  }
+
+  .stage.compact {
+    height: min(36vh, 320px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stage {
+      transition: none;
+    }
   }
 
   .canvas {
@@ -120,10 +151,13 @@
 
   .placeholder {
     position: absolute;
-    left: 4%;
+    left: 50%;
     bottom: 0;
-    width: 92%;
+    transform: translateX(-50%);
+    width: auto;
     height: auto;
+    max-width: 92%;
+    max-height: 100%;
     pointer-events: none;
   }
 

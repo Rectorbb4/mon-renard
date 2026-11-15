@@ -570,7 +570,8 @@ export class FoxScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // Plus l'écran est étroit, plus la caméra recule pour garder tout le renard.
-    const distance = 3.6 * Math.max(1, 0.8 / this.camera.aspect);
+    // Sur une scène large et basse (pendant le check-in), elle s'approche un peu.
+    const distance = 3.6 * Math.max(0.78, 0.8 / this.camera.aspect);
     const target = new THREE.Vector3(0, 0.6, 0);
     const dir = new THREE.Vector3(0.36, 0.06, 1).normalize();
     this.camera.position.copy(dir.multiplyScalar(distance)).add(target);

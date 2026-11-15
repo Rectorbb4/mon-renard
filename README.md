@@ -45,7 +45,8 @@ Les mises à jour s'installent toutes seules au lancement suivant.
 | Dossier | Contenu |
 |---|---|
 | `src/pages/` | les écrans (accueil, Repères…) |
-| `src/lib/` | navigation, installation, logique partagée |
+| `src/lib/` | navigation, installation, journal des check-ins côté interface, logique partagée |
+| `src/data/` | base de données locale (IndexedDB via Dexie) : profils, check-ins, moments « je le sens » |
 | `src/fox/` | la scène 3D du renard : humeurs, lumière, météo, réactions |
 | `src/components/` | morceaux d'interface réutilisables |
 | `public/` | icônes et images servies telles quelles |
