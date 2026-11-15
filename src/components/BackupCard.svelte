@@ -14,13 +14,12 @@
     type BackupSummary
   } from '../data/backup';
   import { getDB } from '../data/db';
+  import { lastBackupAt, markBackup } from '../lib/backupReminder';
   import { startJournal } from '../lib/journal.svelte';
   import { formatSince } from '../lib/time';
 
-  const KEY_LAST = 'mon-renard:derniere-sauvegarde';
-
   let counts = $state<{ checkins: number; events: number } | null>(null);
-  let lastBackup = $state<number | null>(readLast());
+  let lastBackup = $state<number | null>(lastBackupAt());
   let busy = $state(false);
   let message = $state<{ kind: 'ok' | 'error'; text: string } | null>(null);
   let pending = $state<{ backup: Backup; summary: BackupSummary; invalid: number; name: string } | null>(null);
@@ -33,15 +32,6 @@
     }).subscribe({ next: (c) => (counts = c), error: (e) => console.error(e) });
     return () => sub.unsubscribe();
   });
-
-  function readLast(): number | null {
-    try {
-      const v = Number(localStorage.getItem(KEY_LAST));
-      return v > 0 ? v : null;
-    } catch {
-      return null;
-    }
-  }
 
   const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
   const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -73,11 +63,7 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       lastBackup = now;
-      try {
-        localStorage.setItem(KEY_LAST, String(now));
-      } catch {
-        /* stockage indisponible */
-      }
+      markBackup(now);
       message = {
         kind: 'ok',
         text: `Sauvegarde enregistrée dans tes téléchargements : ${a.download}. Range-la dans un endroit sûr, elle contient ton journal.`

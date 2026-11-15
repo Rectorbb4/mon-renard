@@ -2,13 +2,27 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { MOOD_IDS, MOODS, clipsUsed, isMoodId, moodFromScore, randomBetween } from './moods';
 
+const modelFile = readFileSync(new URL('../../public/models/fox.glb', import.meta.url));
+const model = JSON.parse(modelFile.subarray(20, 20 + modelFile.readUInt32LE(12)).toString('utf8'));
+
 /** Lit les noms d'animations directement dans le fichier du modèle. */
 function clipsInModel(): string[] {
-  const buf = readFileSync(new URL('../../public/models/fox.glb', import.meta.url));
-  const jsonLength = buf.readUInt32LE(12);
-  const gltf = JSON.parse(buf.subarray(20, 20 + jsonLength).toString('utf8'));
-  return gltf.animations.map((a: { name: string }) => a.name);
+  return model.animations.map((a: { name: string }) => a.name);
 }
+
+describe('modèle 3D allégé (tools/optimize-model.mjs)', () => {
+  it('contient tous les os que la scène fait bouger', () => {
+    // Dans le fichier, les os portent un numéro (« Fox_Head_016 ») que la scène retire
+    const bones = new Set(model.nodes.map((n: { name?: string }) => n.name?.replace(/_\d+$/, '')));
+    const needed = ['Fox_Pelvis', 'Fox_Head', 'Fox_LEar1', 'Fox_REar1', 'Fox_UpperLEyelid', 'Fox_UpperREyelid', 'Fox_Ribcage', 'Fox_LEye', 'Fox_REye'];
+    expect(needed.filter((b) => !bones.has(b))).toEqual([]);
+  });
+
+  it('reste léger à télécharger', () => {
+    expect(modelFile.length).toBeLessThan(3 * 1024 * 1024);
+    expect(model.images.every((i: { mimeType: string }) => i.mimeType === 'image/jpeg')).toBe(true);
+  });
+});
 
 describe('moodFromScore', () => {
   it('couvre les cinq humeurs du plus bas au plus haut', () => {

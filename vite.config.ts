@@ -45,7 +45,7 @@ export default defineConfig(({ command, isPreview }) => ({
         // Tout ce qui est nécessaire pour fonctionner hors ligne est mis en cache à l'installation.
         // Le modèle 3D du renard (fox.glb) en fait partie : il pèse environ 9 Mo, d'où la limite relevée.
         globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,glb}'],
-        maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true
       },

@@ -57,8 +57,13 @@ Le fichier n'est pas chiffré : il faut le garder dans un endroit sûr.
 | `src/fox/` | la scène 3D du renard : humeurs, lumière, météo, réactions |
 | `src/components/` | morceaux d'interface réutilisables |
 | `public/` | icônes et images servies telles quelles |
-| `public/models/fox.glb` | le modèle 3D du renard |
-| `tools/` | outils de développement, par exemple le rendu des icônes à partir du modèle 3D |
+| `public/models/fox.glb` | le modèle 3D du renard, allégé (2,4 Mo au lieu de 9,1) |
+| `tools/source/fox-original.glb` | le modèle d'origine, non publié |
+| `tools/` | outils de développement : rendu des icônes (`make-icons.mjs`), allègement du modèle (`optimize-model.mjs`) |
+
+Pour utiliser une nouvelle animation du renard, l'ajouter à la liste `KEEP` de `tools/optimize-model.mjs`,
+puis relancer `node tools/optimize-model.mjs` avec le serveur de dev ouvert. Un test vérifie que toutes
+les animations utilisées sont bien dans le modèle.
 
 ## Crédits
 

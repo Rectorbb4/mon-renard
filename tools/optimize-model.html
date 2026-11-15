@@ -1,0 +1,203 @@
+<!doctype html>
+<!--
+  Outil de développement (non publié) : allège le modèle du renard pour l'appli.
+  - garde seulement les animations utilisées (liste dans tools/optimize-model.mjs) ;
+  - réencode les textures PNG en JPEG (elles n'ont pas de transparence) ;
+  - retire les données devenues inutiles.
+  Paramètres : ?src=/tools/source/fox-original.glb&keep=Clip1,Clip2&color=0.86&normal=0.92&size=2048
+  Utilisé par tools/optimize-model.mjs, qui ouvre cette page dans Chrome sans fenêtre et récupère le résultat.
+-->
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Allègement du modèle</title>
+  </head>
+  <body>
+    <pre id="log"></pre>
+    <script type="module">
+      const params = new URLSearchParams(location.search);
+      const src = params.get('src') || '/tools/source/fox-original.glb';
+      const keep = new Set((params.get('keep') || '').split(',').filter(Boolean));
+      const quality = { color: Number(params.get('color') || 0.86), normal: Number(params.get('normal') || 0.92) };
+      const maxSize = Number(params.get('size') || 2048);
+      const log = (...a) => (document.getElementById('log').textContent += a.join(' ') + '\n');
+
+      async function main() {
+        const buf = new Uint8Array(await (await fetch(src)).arrayBuffer());
+        const view = new DataView(buf.buffer);
+        if (view.getUint32(0, true) !== 0x46546c67) throw new Error('Pas un fichier .glb');
+        const jsonLen = view.getUint32(12, true);
+        const gltf = JSON.parse(new TextDecoder().decode(buf.subarray(20, 20 + jsonLen)));
+        const binStart = 20 + jsonLen + 8;
+        const viewData = (i) => {
+          const bv = gltf.bufferViews[i];
+          const start = binStart + (bv.byteOffset ?? 0);
+          return buf.subarray(start, start + bv.byteLength);
+        };
+
+        // 1. Animations gardées
+        const names = (gltf.animations ?? []).map((a) => a.name);
+        const missing = [...keep].filter((n) => !names.includes(n));
+        if (missing.length) throw new Error('Animations introuvables : ' + missing.join(', '));
+        gltf.animations = (gltf.animations ?? []).filter((a) => keep.size === 0 || keep.has(a.name));
+        log('animations gardées :', gltf.animations.length, '/', names.length);
+
+        // 2. Accesseurs encore utilisés, renumérotés
+        const used = new Set();
+        for (const mesh of gltf.meshes ?? [])
+          for (const p of mesh.primitives) {
+            Object.values(p.attributes).forEach((a) => used.add(a));
+            if (p.indices != null) used.add(p.indices);
+            for (const t of p.targets ?? []) Object.values(t).forEach((a) => used.add(a));
+          }
+        for (const skin of gltf.skins ?? []) if (skin.inverseBindMatrices != null) used.add(skin.inverseBindMatrices);
+        for (const anim of gltf.animations) for (const s of anim.samplers) used.add(s.input).add(s.output);
+        const accMap = new Map();
+        const accessors = [];
+        [...used].sort((a, b) => a - b).forEach((old) => {
+          accMap.set(old, accessors.length);
+          accessors.push(gltf.accessors[old]);
+        });
+        const acc = (i) => accMap.get(i);
+        for (const mesh of gltf.meshes ?? [])
+          for (const p of mesh.primitives) {
+            for (const k of Object.keys(p.attributes)) p.attributes[k] = acc(p.attributes[k]);
+            if (p.indices != null) p.indices = acc(p.indices);
+            for (const t of p.targets ?? []) for (const k of Object.keys(t)) t[k] = acc(t[k]);
+          }
+        for (const skin of gltf.skins ?? []) if (skin.inverseBindMatrices != null) skin.inverseBindMatrices = acc(skin.inverseBindMatrices);
+        for (const anim of gltf.animations)
+          for (const s of anim.samplers) {
+            s.input = acc(s.input);
+            s.output = acc(s.output);
+          }
+        gltf.accessors = accessors;
+
+        // 3. Textures en JPEG
+        const newImages = new Map();
+        const normalImages = new Set((gltf.materials ?? []).map((m) => m.normalTexture && gltf.textures[m.normalTexture.index].source).filter((x) => x != null));
+        for (const [i, img] of (gltf.images ?? []).entries()) {
+          const blob = new Blob([viewData(img.bufferView)], { type: img.mimeType });
+          const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+          const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+          const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+          const ctx = canvas.getContext('2d', { colorSpace: 'srgb' });
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          const q = normalImages.has(i) ? quality.normal : quality.color;
+          const jpeg = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/jpeg', quality: q })).arrayBuffer());
+          newImages.set(i, jpeg);
+          log(`image ${i}${normalImages.has(i) ? ' (relief)' : ''} : ${bitmap.width}→${canvas.width} px, ${(viewData(img.bufferView).length / 1024) | 0} → ${(jpeg.length / 1024) | 0} Ko`);
+        }
+
+        // 4. Nouveau bloc binaire avec seulement les données utiles.
+        // Les données d'animation sont souvent rangées dans un seul gros bloc : on recopie chaque accesseur
+        // à part (sauf les blocs entrelacés, recopiés en entier), pour laisser de côté les animations retirées.
+        const COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
+        const BYTES = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
+        const elementSize = (a) => COMPONENTS[a.type] * BYTES[a.componentType];
+        // Bloc vraiment entrelacé : un accesseur qui l'utilise a un pas plus grand que ses éléments
+        const interleaved = new Set(
+          accessors.filter((a) => a.bufferView != null && (gltf.bufferViews[a.bufferView].byteStride ?? elementSize(a)) !== elementSize(a)).map((a) => a.bufferView)
+        );
+        const strided = (i) => interleaved.has(i);
+        const usedViews = new Set(accessors.map((a) => a.bufferView).filter((v) => v != null && strided(v)));
+        for (const a of accessors) if (a.sparse) usedViews.add(a.sparse.indices.bufferView).add(a.sparse.values.bufferView);
+        const chunks = [];
+        let offset = 0;
+        const viewMap = new Map();
+        const bufferViews = [];
+        const push = (data, bv) => {
+          const pad = (4 - (offset % 4)) % 4;
+          if (pad) chunks.push(new Uint8Array(pad));
+          offset += pad;
+          const nbv = { ...bv, buffer: 0, byteOffset: offset, byteLength: data.length };
+          chunks.push(data);
+          offset += data.length;
+          bufferViews.push(nbv);
+          return bufferViews.length - 1;
+        };
+        [...usedViews].sort((a, b) => a - b).forEach((old) => viewMap.set(old, push(viewData(old), gltf.bufferViews[old])));
+        // Les blocs entrelacés sont recopiés tels quels
+        const copied = new Set(accessors.filter((a) => a.bufferView != null && strided(a.bufferView)));
+        for (const a of copied) a.bufferView = viewMap.get(a.bufferView);
+        // Les morceaux gardés d'un même bloc sont regroupés dans un nouveau bloc plus petit
+        const groups = new Map();
+        for (const a of accessors) {
+          if (a.bufferView == null || copied.has(a)) continue;
+          const g = groups.get(a.bufferView) ?? { parts: [], length: 0, keys: new Map(), accessors: [] };
+          groups.set(a.bufferView, g);
+          const start = a.byteOffset ?? 0;
+          const length = a.count * elementSize(a);
+          const key = `${start}:${length}`;
+          if (!g.keys.has(key)) {
+            g.length += (4 - (g.length % 4)) % 4;
+            g.keys.set(key, g.length);
+            g.parts.push({ at: g.length, data: viewData(a.bufferView).subarray(start, start + length) });
+            g.length += length;
+          }
+          g.accessors.push([a, g.keys.get(key)]);
+        }
+        for (const [old, g] of [...groups].sort((x, y) => x[0] - y[0])) {
+          const data = new Uint8Array(g.length);
+          for (const part of g.parts) data.set(part.data, part.at);
+          const index = push(data, gltf.bufferViews[old]);
+          for (const [a, at] of g.accessors) {
+            a.bufferView = index;
+            if (at) a.byteOffset = at;
+            else delete a.byteOffset;
+          }
+        }
+        for (const a of accessors) {
+          if (a.sparse) {
+            a.sparse.indices.bufferView = viewMap.get(a.sparse.indices.bufferView);
+            a.sparse.values.bufferView = viewMap.get(a.sparse.values.bufferView);
+          }
+        }
+        for (const [i, img] of (gltf.images ?? []).entries()) {
+          const { byteStride: _s, target: _t, ...plain } = gltf.bufferViews[img.bufferView];
+          img.bufferView = push(newImages.get(i), plain);
+          img.mimeType = 'image/jpeg';
+        }
+        const binPad = (4 - (offset % 4)) % 4;
+        if (binPad) chunks.push(new Uint8Array(binPad));
+        offset += binPad;
+        gltf.bufferViews = bufferViews;
+        gltf.buffers = [{ byteLength: offset }];
+        gltf.asset = { ...gltf.asset, extras: { ...(gltf.asset.extras ?? {}), optimized: 'tools/optimize-model.html' } };
+
+        // 5. Assemblage du .glb
+        let json = new TextEncoder().encode(JSON.stringify(gltf));
+        const jsonPad = (4 - (json.length % 4)) % 4;
+        json = new Uint8Array([...json, ...new Array(jsonPad).fill(0x20)]);
+        const total = 12 + 8 + json.length + 8 + offset;
+        const out = new Uint8Array(total);
+        const dv = new DataView(out.buffer);
+        dv.setUint32(0, 0x46546c67, true);
+        dv.setUint32(4, 2, true);
+        dv.setUint32(8, total, true);
+        dv.setUint32(12, json.length, true);
+        dv.setUint32(16, 0x4e4f534a, true);
+        out.set(json, 20);
+        let p = 20 + json.length;
+        dv.setUint32(p, offset, true);
+        dv.setUint32(p + 4, 0x004e4942, true);
+        p += 8;
+        for (const c of chunks) {
+          out.set(c, p);
+          p += c.length;
+        }
+        log(`total : ${(buf.length / 1024) | 0} → ${(total / 1024) | 0} Ko`);
+
+        let bin = '';
+        for (let i = 0; i < out.length; i += 0x8000) bin += String.fromCharCode(...out.subarray(i, i + 0x8000));
+        window.__result = { base64: btoa(bin), log: document.getElementById('log').textContent };
+      }
+
+      main().catch((e) => {
+        log('Erreur :', e.message);
+        window.__result = { error: e.message };
+      });
+    </script>
+  </body>
+</html>

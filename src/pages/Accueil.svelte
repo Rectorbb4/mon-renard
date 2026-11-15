@@ -5,12 +5,23 @@
   import FoxStage from '../components/FoxStage.svelte';
   import type { CheckIn, FeltEvent } from '../data/types';
   import { MOODS, moodFromScore, type MoodId } from '../fox/moods';
+  import { getDB } from '../data/db';
+  import { backupDue, lastBackupAt } from '../lib/backupReminder';
   import { install, promptInstall } from '../lib/install.svelte';
   import { feelIt, journal, startJournal } from '../lib/journal.svelte';
   import { hrefFor } from '../lib/router';
   import { formatSince } from '../lib/time';
 
-  startJournal();
+  // Ouvre le journal ; puis rappel discret : proposer une sauvegarde quand le journal se remplit, puis une fois par mois
+  let remindBackup = $state(false);
+  startJournal()
+    .then(async () => {
+      if (journal.error) return;
+      const db = getDB();
+      const entries = (await db.checkins.count()) + (await db.events.count());
+      remindBackup = backupDue(entries, lastBackupAt());
+    })
+    .catch(() => {});
 
   let checking = $state(false);
   let preview = $state<number | null>(null);
@@ -190,6 +201,13 @@
       <button class="install" type="button" onclick={promptInstall}>Installer sur l'écran d'accueil</button>
     {:else if install.installed}
       <p class="installed">Installée sur ce téléphone. Elle marche aussi hors connexion.</p>
+    {/if}
+
+    {#if remindBackup}
+      <a class="backup-hint" href={hrefFor('reperes')}>
+        <span class="help-title">Pense à sauvegarder ton journal</span>
+        <span class="help-text">Il ne vit que sur ce téléphone. Une sauvegarde prend deux secondes, dans Repères.</span>
+      </a>
     {/if}
 
     <a class="help" href={hrefFor('reperes')}>
@@ -454,6 +472,17 @@
     padding: 14px 18px;
     border-radius: var(--radius);
     border: 1.5px solid var(--line);
+    text-decoration: none;
+    color: var(--fg);
+  }
+
+  .backup-hint {
+    display: grid;
+    gap: 2px;
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    border: 1.5px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface));
     text-decoration: none;
     color: var(--fg);
   }

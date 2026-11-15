@@ -14,6 +14,16 @@
     return () => window.removeEventListener('hashchange', onHash);
   });
 
+  const TITLES: Record<Route, string> = {
+    accueil: 'Mon renard',
+    historique: 'Historique · Mon renard',
+    reperes: 'Repères · Mon renard'
+  };
+
+  $effect(() => {
+    document.title = TITLES[route];
+  });
+
   const NAV: { route: Route; label: string; icon: string }[] = [
     {
       route: 'accueil',
@@ -44,6 +54,11 @@
       <!-- Chargé à la demande : les courbes ne pèsent rien tant qu'on n'ouvre pas l'historique -->
       {#await import('./pages/Historique.svelte') then page}
         <page.default />
+      {:catch}
+        <div class="load-error" role="alert">
+          <p>L'historique n'a pas pu s'ouvrir. Tes données sont intactes.</p>
+          <button type="button" onclick={() => location.reload()}>Recharger l'appli</button>
+        </div>
       {/await}
     {:else}
       <Accueil />
@@ -77,6 +92,26 @@
     padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 24px);
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .load-error {
+    display: grid;
+    gap: 12px;
+    margin-top: 40px;
+    text-align: center;
+  }
+
+  .load-error button {
+    justify-self: center;
+    min-height: 48px;
+    padding: 0 24px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
   }
 
   nav {
