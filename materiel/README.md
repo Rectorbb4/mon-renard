@@ -1,7 +1,7 @@
 # Matériel : capteurs portés
 
 Deux objets discrets : une **ceinture cardio**, invisible sous un tee-shirt, et une **bague connectée**.
-Prix relevés le 15 novembre 2026.
+Prix relevés le 15 novembre 2026. **Commandés le 15 novembre 2026.**
 
 ## Liste d'achat
 
