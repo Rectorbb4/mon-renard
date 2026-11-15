@@ -25,5 +25,6 @@ describe('parseRoute', () => {
 
   it('fabrique un lien que parseRoute relit à l’identique', () => {
     expect(parseRoute(hrefFor('reperes'))).toBe('reperes');
+    expect(parseRoute(hrefFor('historique'))).toBe('historique');
   });
 });

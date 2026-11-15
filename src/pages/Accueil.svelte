@@ -176,7 +176,10 @@
   .date {
     color: var(--muted);
     font-size: 15px;
-    text-transform: capitalize;
+  }
+
+  .date::first-letter {
+    text-transform: uppercase;
   }
 
   h1 {

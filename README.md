@@ -56,4 +56,4 @@ Les mises à jour s'installent toutes seules au lancement suivant.
 ## Crédits
 
 - Modèle 3D « Fox » par [pxltiger](https://sketchfab.com/3d-models/fox-39f97fe58f0b47ce80b6e02814001dd7), licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- Construit avec [Svelte](https://svelte.dev), [Vite](https://vite.dev) et [three.js](https://threejs.org).
+- Construit avec [Svelte](https://svelte.dev), [Vite](https://vite.dev), [three.js](https://threejs.org), [Dexie](https://dexie.org) et [uPlot](https://github.com/leeoniya/uPlot).

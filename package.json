@@ -1,7 +1,7 @@
 {
   "name": "mon-renard",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Compagnon d'humeur du quotidien : un renard 3D qui vit avec toi. Données uniquement sur l'appareil.",
   "type": "module",
   "scripts": {
@@ -29,6 +29,7 @@
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource/atkinson-hyperlegible": "^5.3.0",
     "dexie": "^4.4.7",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "uplot": "^1.6.32"
   }
 }

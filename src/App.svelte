@@ -22,6 +22,12 @@
       icon: 'M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-5.5h-5V21H5a1 1 0 0 1-1-1z'
     },
     {
+      route: 'historique',
+      label: 'Historique',
+      // courbe montante
+      icon: 'M4 20h16M5 16l4.5-5 3.5 3 6-7M15 7h4v4'
+    },
+    {
       route: 'reperes',
       label: 'Repères',
       // bouée
@@ -34,6 +40,11 @@
   <main>
     {#if route === 'reperes'}
       <Reperes />
+    {:else if route === 'historique'}
+      <!-- Chargé à la demande : les courbes ne pèsent rien tant qu'on n'ouvre pas l'historique -->
+      {#await import('./pages/Historique.svelte') then page}
+        <page.default />
+      {/await}
     {:else}
       <Accueil />
     {/if}

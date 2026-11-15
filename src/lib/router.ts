@@ -1,6 +1,6 @@
 // Navigation par l'ancre de l'URL (#/reperes) : marche hors ligne et sur GitHub Pages sans configuration serveur.
 
-export const ROUTES = ['accueil', 'reperes'] as const;
+export const ROUTES = ['accueil', 'historique', 'reperes'] as const;
 export type Route = (typeof ROUTES)[number];
 
 export const DEFAULT_ROUTE: Route = 'accueil';

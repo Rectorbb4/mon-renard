@@ -5,6 +5,7 @@
   import type { CheckIn } from '../data/types';
   import { MOOD_IDS, MOODS, moodFromScore } from '../fox/moods';
   import { isSleepNotedToday, saveCheckIn } from '../lib/journal.svelte';
+  import { SLEEP_OPTIONS, energyLabel } from '../lib/labels';
 
   let {
     previous,
@@ -31,21 +32,7 @@
   const moodId = $derived(moodFromScore(mood));
   const moodGradient = `linear-gradient(90deg, ${MOOD_IDS.map((id) => MOODS[id].sky.bottom).join(', ')})`;
 
-  const SLEEP = [
-    { value: 0, label: 'Très mauvaise' },
-    { value: 0.25, label: 'Mauvaise' },
-    { value: 0.5, label: 'Moyenne' },
-    { value: 0.75, label: 'Bonne' },
-    { value: 1, label: 'Très bonne' }
-  ];
-
-  function energyLabel(v: number): string {
-    if (v < 0.2) return 'À plat';
-    if (v < 0.4) return 'Fatigue';
-    if (v < 0.6) return 'Ça va';
-    if (v < 0.8) return 'En forme';
-    return 'Pleine forme';
-  }
+  const SLEEP = SLEEP_OPTIONS;
 
   onMount(() => {
     onpreview(mood);

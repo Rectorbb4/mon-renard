@@ -13,6 +13,7 @@
   /* « Je le sens » : un indigo calme, distinct de l'orange du check-in */
   --felt: #5354c9;
   --felt-fg: #ffffff;
+  --sleep: #2a8a98;
   --sky-top: #9fd0ea;
   --sky-bottom: #f6dfc6;
 
@@ -38,6 +39,7 @@
     --urgent-fg: #2a0705;
     --felt: #a9aaff;
     --felt-fg: #15153d;
+    --sleep: #6fd0dc;
     --sky-top: #24415c;
     --sky-bottom: #7a5a6e;
     color-scheme: dark;

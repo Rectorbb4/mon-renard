@@ -66,7 +66,7 @@
       sous licence
       <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank" rel="noopener">CC BY 4.0</a>.
     </p>
-    <p>Conçue avec Svelte, Vite et three.js, logiciels libres.</p>
+    <p>Conçue avec Svelte, Vite, three.js, Dexie et uPlot, logiciels libres.</p>
     <p class="version">Version {__APP_VERSION__}</p>
   </div>
 </section>
