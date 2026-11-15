@@ -45,9 +45,9 @@ Les mises à jour s'installent toutes seules au lancement suivant.
 Pour avoir le renard en widget sur l'écran d'accueil, il existe une petite appli Android (dossier `android/`).
 Elle affiche le site en plein écran : les mises à jour du site y arrivent donc toutes seules. En plus, elle apporte :
 
-- un **petit widget** (2 × 2) : le renard dans l'humeur du dernier check-in ;
+- un **petit widget** (2 × 2) : le renard, sans fond, dans l'humeur du dernier check-in ;
 - un **grand widget** (4 × 2) : le renard, son humeur, et les boutons *Comment ça va ?* et *Je le sens* ;
-- un renard somnolent la nuit (de 22 h à 7 h) ;
+- un renard **animé** (il respire, bouge, cligne des yeux) et somnolent la nuit, de 22 h à 7 h ;
 - les sauvegardes rangées directement dans les téléchargements.
 
 **Installer** : sur le téléphone, *Repères → Le widget du renard* propose de télécharger `mon-renard.apk`.
@@ -71,7 +71,10 @@ construire, copier l'APK dans `public/android/mon-renard.apk` et mettre les mêm
 `public/android/version.json`. L'appli signale alors la mise à jour dans *Repères*.
 
 **Images du widget** : `node tools/render-widget.mjs <chemin vers puppeteer-core>`, avec le serveur de dev ouvert,
-refait les 10 images (5 humeurs, de jour et de nuit) à partir du vrai renard 3D.
+refait les images à partir du vrai renard 3D, sans fond : pour chaque humeur, une boucle de 16 images, 2 images de
+clignement et une boucle de nuit de 8 images. Un widget Android ne peut pas faire tourner de 3D : il fait défiler
+ces images (un `ViewFlipper`, `res/layout/widget_fox.xml`, écrit lui aussi par le script, comme les vitesses dans
+`res/values/widget_anim.xml`). Le défilement s'arrête tout seul quand l'écran d'accueil n'est pas visible.
 
 La version d'essai se teste dans un émulateur : lancer `npx vite --host 127.0.0.1 --port 5174`
 (l'émulateur voit l'ordinateur à l'adresse 10.0.2.2).

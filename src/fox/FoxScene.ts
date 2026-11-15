@@ -82,6 +82,12 @@ function targetColors(m: Mood): ColorBlend {
   };
 }
 
+// Lumière des images du widget (sans ciel)
+const WHITE = new THREE.Color('#ffffff');
+const MOONLIGHT = new THREE.Color('#9fb3e8');
+const DAY_SKY = new THREE.Color('#dbeeff');
+const DAY_GROUND = new THREE.Color('#6f7f55');
+
 /** Petite texture ronde et floue, pour les halos et les particules. */
 function softDot(size = 64): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -175,6 +181,14 @@ export class FoxScene {
   /** Paupières à demi fermées (0 à 1) : renard qui somnole, pour les images du widget la nuit. */
   private drowsy = 0;
 
+  // Images du widget Android (voir setWidgetMode) : décor caché, ombre seule, boucle calculée image par image
+  private decor: THREE.Object3D[] = [];
+  private shadowCatcher: THREE.Mesh | null = null;
+  private widgetPhase: number | null = null;
+  private blinkOverride: number | null = null;
+  /** Angle des paupières quand il cligne, dans le widget. Au-delà de 0,9 environ, la paupière du modèle remonte. */
+  widgetBlinkLid = 0.88;
+
   // Interaction
   private dragYaw = 0;
   private pointer: { id: number; x: number; y: number; t: number; moved: number } | null = null;
@@ -193,7 +207,9 @@ export class FoxScene {
     this.colors = targetColors(this.mood);
     this.targetCol = targetColors(this.mood);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+    // alpha : le ciel couvre tout dans l'appli, mais les images du widget sont sans fond
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -259,6 +275,7 @@ export class FoxScene {
     sky.frustumCulled = false;
     sky.renderOrder = -1;
     this.scene.add(sky);
+    this.decor.push(sky);
 
     this.fog = new THREE.FogExp2(this.colors.skyBottom.clone(), this.blend.fog);
     this.scene.fog = this.fog;
@@ -275,6 +292,7 @@ export class FoxScene {
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
+    this.decor.push(ground);
 
     // Collines lointaines, adoucies par la brume
     this.hillMat = new THREE.MeshStandardMaterial({ color: this.colors.ground.clone(), roughness: 1 });
@@ -288,6 +306,7 @@ export class FoxScene {
       h.position.set(x, -0.2, z);
       h.scale.set(sx, sy, sz);
       this.scene.add(h);
+      this.decor.push(h);
     });
 
     // Halo du soleil ou de la lune
@@ -297,6 +316,7 @@ export class FoxScene {
     this.glow.position.set(-3.5, 3.6, -12);
     this.glow.scale.setScalar(5);
     this.scene.add(this.glow);
+    this.decor.push(this.glow);
 
     // Lumières
     this.hemi = new THREE.HemisphereLight(this.colors.ambientSky.clone(), this.colors.ambientGround.clone(), this.blend.ambientIntensity);
@@ -329,6 +349,7 @@ export class FoxScene {
     );
     this.rain.frustumCulled = false;
     this.scene.add(this.rain);
+    this.decor.push(this.rain);
 
     // Poussières de lumière (élan) ou feuilles emportées par le vent (emballement)
     const MOTES = this.reducedMotion ? 50 : 140;
@@ -348,6 +369,7 @@ export class FoxScene {
     );
     this.motes.frustumCulled = false;
     this.scene.add(this.motes);
+    this.decor.push(this.motes);
   }
 
   private resetDrop(i: number, y = 4.5 + Math.random()): void {
@@ -615,9 +637,62 @@ export class FoxScene {
       this.colors[key].lerp(this.targetCol[key], k);
     }
     const b = this.blend;
-    const c = this.colors;
 
-    // 2. Décor
+    // 2. Décor et lumière
+    this.updateLook();
+    this.updateWeather(dt, b);
+
+    // Respiration guidée : entrée et sortie en douceur, lumière qui suit le souffle
+    this.guideMix += ((this.guide ? 1 : 0) - this.guideMix) * (1 - Math.exp(-dt * 1.5));
+    if (this.guide) this.guideFull = Math.min(1, Math.max(0, this.guide()));
+    const gm = this.guideMix;
+    const gf = this.guideFull;
+    this.glow.scale.setScalar(5 * (1 + gm * (0.15 + 0.45 * gf)));
+    (this.glow.material as THREE.SpriteMaterial).opacity = Math.min(1, b.glowOpacity + gm * (0.15 + 0.35 * gf));
+    this.rim.intensity = 0.7 + gm * (0.2 + 0.9 * gf);
+
+    // 3. Animation du squelette
+    if (this.mixer) {
+      if (this.busy === null && !this.guide && t >= this.nextGestureAt && this.mood.gestures.length) {
+        const g = this.mood.gestures[Math.floor(Math.random() * this.mood.gestures.length)];
+        this.playGesture(g);
+      }
+      this.restorePose();
+      this.mixer.update(dt);
+      this.savePose();
+      this.applyProcedural(dt, b);
+    }
+
+    // 4. Orientation : le doigt fait tourner le renard, qui revient doucement face à toi
+    if (!this.pointer) this.dragYaw *= Math.exp(-dt * 2.2);
+    const shiver = this.reducedMotion ? 0 : b.restless * 0.012 * Math.sin(t * 47);
+    this.foxYaw += (this.dragYaw - this.foxYaw) * Math.min(1, dt * 12);
+    this.foxRoot.rotation.y = this.foxYaw;
+    this.foxRoot.position.x = shiver;
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private restorePose(): void {
+    for (const [bone, pose] of this.animatedPose) {
+      bone.position.copy(pose.p);
+      bone.quaternion.copy(pose.q);
+      bone.scale.copy(pose.s);
+    }
+  }
+
+  private savePose(): void {
+    for (const [bone, pose] of this.animatedPose) {
+      pose.p.copy(bone.position);
+      pose.q.copy(bone.quaternion);
+      pose.s.copy(bone.scale);
+    }
+  }
+
+  /** Couleurs du ciel, du sol et des lumières selon l'humeur en cours (et la somnolence). */
+  private updateLook(): void {
+    const b = this.blend;
+    const c = this.colors;
     this.skyUniforms.top.value.copy(c.skyTop).multiplyScalar(1 - 0.45 * this.drowsy);
     this.skyUniforms.bottom.value.copy(c.skyBottom).multiplyScalar(1 - 0.35 * this.drowsy);
     this.fog.color.copy(c.skyBottom);
@@ -637,45 +712,93 @@ export class FoxScene {
     // Somnolent (images de nuit du widget) : lumière du soir, plus basse
     this.renderer.toneMappingExposure = b.exposure * (1 - 0.38 * this.drowsy);
     this.sun.intensity = b.sunIntensity * (1 - 0.5 * this.drowsy);
-    this.updateWeather(dt, b);
 
-    // Respiration guidée : entrée et sortie en douceur, lumière qui suit le souffle
-    this.guideMix += ((this.guide ? 1 : 0) - this.guideMix) * (1 - Math.exp(-dt * 1.5));
-    if (this.guide) this.guideFull = Math.min(1, Math.max(0, this.guide()));
-    const gm = this.guideMix;
-    const gf = this.guideFull;
-    this.glow.scale.setScalar(5 * (1 + gm * (0.15 + 0.45 * gf)));
-    (this.glow.material as THREE.SpriteMaterial).opacity = Math.min(1, b.glowOpacity + gm * (0.15 + 0.35 * gf));
-    this.rim.intensity = 0.7 + gm * (0.2 + 0.9 * gf);
-
-    // 3. Animation du squelette
-    if (this.mixer) {
-      if (this.busy === null && !this.guide && t >= this.nextGestureAt && this.mood.gestures.length) {
-        const g = this.mood.gestures[Math.floor(Math.random() * this.mood.gestures.length)];
-        this.playGesture(g);
-      }
-      for (const [bone, pose] of this.animatedPose) {
-        bone.position.copy(pose.p);
-        bone.quaternion.copy(pose.q);
-        bone.scale.copy(pose.s);
-      }
-      this.mixer.update(dt);
-      for (const [bone, pose] of this.animatedPose) {
-        pose.p.copy(bone.position);
-        pose.q.copy(bone.quaternion);
-        pose.s.copy(bone.scale);
-      }
-      this.applyProcedural(dt, b);
+    if (this.shadowCatcher?.visible) {
+      // Widget : sans ciel, le renard doit rester bien visible sur n'importe quel fond d'écran.
+      // Lumière franche, la moitié de la teinte de l'humeur ; la nuit, plus douce et bleutée.
+      const d = this.drowsy;
+      this.sun.color.copy(c.sun).lerp(WHITE, 0.5).lerp(MOONLIGHT, 0.6 * d);
+      this.sun.intensity = Math.max(b.sunIntensity, 2.2) * (1 - 0.35 * d);
+      this.hemi.color.copy(c.ambientSky).lerp(DAY_SKY, 0.5);
+      this.hemi.groundColor.copy(c.ambientGround).lerp(DAY_GROUND, 0.5);
+      this.hemi.intensity = Math.max(b.ambientIntensity, 1.1) * (1 - 0.25 * d);
+      this.renderer.toneMappingExposure = Math.max(b.exposure, 1) * (1 - 0.15 * d);
+      // Soleil plus haut : une ombre courte, sous le renard, qui ne sort pas du cadre
+      this.sun.position.set(-1.1, 4.2, 2.4);
     }
+  }
 
-    // 4. Orientation : le doigt fait tourner le renard, qui revient doucement face à toi
-    if (!this.pointer) this.dragYaw *= Math.exp(-dt * 2.2);
-    const shiver = this.reducedMotion ? 0 : b.restless * 0.012 * Math.sin(t * 47);
-    this.foxYaw += (this.dragYaw - this.foxYaw) * Math.min(1, dt * 12);
-    this.foxRoot.rotation.y = this.foxYaw;
-    this.foxRoot.position.x = shiver;
+  // ------------------------------------------------------------------ images du widget Android
 
+  /**
+   * Mode « widget » (utilisé par tools/render-widget.mjs) : ciel, sol et météo cachés, fond transparent,
+   * seule l'ombre du renard reste. La boucle s'arrête : chaque image est dessinée par widgetFrame().
+   */
+  setWidgetMode(on: boolean): void {
+    if (on) {
+      this.stop();
+      if (!this.shadowCatcher) {
+        this.shadowCatcher = new THREE.Mesh(new THREE.CircleGeometry(2.5, 48), new THREE.ShadowMaterial({ opacity: 0.3 }));
+        this.shadowCatcher.rotation.x = -Math.PI / 2;
+        this.shadowCatcher.receiveShadow = true;
+        this.scene.add(this.shadowCatcher);
+      }
+    }
+    for (const o of this.decor) o.visible = !on;
+    if (this.shadowCatcher) this.shadowCatcher.visible = on;
+    this.scene.fog = on ? null : this.fog;
+    if (!on) {
+      this.widgetPhase = null;
+      this.blinkOverride = null;
+      this.nextBlinkAt = this.time + randomBetween(this.mood.blinkEvery);
+      this.start();
+    }
+  }
+
+  /** Durée (en secondes) d'un tour de l'animation de repos de l'humeur en cours : la boucle du widget. */
+  widgetLoopSeconds(): number {
+    const base = this.actions.get(this.mood.base);
+    return base ? base.getClip().duration / this.mood.speed : 0;
+  }
+
+  /**
+   * Dessine une image de la boucle du widget. `phase` va de 0 à 1 (la phase 1 retombe sur la 0, sans à-coup),
+   * `blink` ferme les yeux (0 à 1), `breaths` = nombre de respirations par tour (par défaut, son rythme à lui).
+   */
+  widgetFrame(phase: number, blink = 0, breaths?: number): void {
+    const base = this.actions.get(this.mood.base);
+    if (!this.mixer || !base) return;
+    breaths ??= Math.max(1, Math.round((this.target.breathRate * 1.4 * this.widgetLoopSeconds()) / (Math.PI * 2)));
+    // Seulement l'animation de repos, à la position voulue, sans fondu ni geste
+    this.mixer.stopAllAction();
+    base.reset().play();
+    base.setEffectiveWeight(1);
+    this.active = base;
+    this.busy = null;
+    this.restorePose();
+    base.time = phase * base.getClip().duration;
+    this.mixer.update(0);
+    this.savePose();
+
+    // L'humeur sans transition
+    Object.assign(this.blend, this.target);
+    for (const key of Object.keys(this.colors) as (keyof ColorBlend)[]) this.colors[key].copy(this.targetCol[key]);
+    this.updateLook();
+
+    this.widgetPhase = phase;
+    this.blinkOverride = blink;
+    this.reactUntil = -1;
+    this.guideMix = 0;
+    this.breathPhase = Math.PI * 2 * breaths * phase;
+    this.applyProcedural(0, this.blend);
+    this.foxRoot.rotation.y = 0;
+    this.foxRoot.position.x = 0;
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** L'image qui vient d'être dessinée (à appeler juste après widgetFrame, dans la même tâche). */
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
   }
 
   private applyProcedural(dt: number, b: Blend): void {
@@ -693,7 +816,10 @@ export class FoxScene {
     // Tête : baissée selon l'humeur, petits mouvements vivants, relevée quand on le touche
     const head = this.bones.Fox_Head;
     if (head) {
-      const restlessLook = this.reducedMotion ? 0 : b.restless * 0.12 * Math.sin(t * 3.1) * Math.sin(t * 1.7);
+      // Pour le widget, un mouvement qui revient au départ à la fin de la boucle
+      const wp = this.widgetPhase;
+      const wander = wp === null ? Math.sin(t * 3.1) * Math.sin(t * 1.7) : Math.sin(wp * Math.PI * 4) * Math.sin(wp * Math.PI * 2);
+      const restlessLook = this.reducedMotion ? 0 : b.restless * 0.12 * wander;
       // Axe Z local : positif = museau vers le bas
       head.quaternion.multiply(q.setFromAxisAngle(Z, b.headDown * (1 - happy * 0.8)));
       head.quaternion.multiply(q.setFromAxisAngle(Y, restlessLook * (1 - this.guideMix)));
@@ -712,7 +838,7 @@ export class FoxScene {
     // Paupières : tombantes selon l'humeur, plus un clignement de temps en temps
     if (this.blinkStart < 0 && t >= this.nextBlinkAt) this.blinkStart = t;
     let blink = 0;
-    if (this.blinkStart >= 0) {
+    if (this.blinkOverride === null && this.blinkStart >= 0) {
       const p = (t - this.blinkStart) / 0.18;
       blink = p < 1 ? Math.sin(p * Math.PI) : 0;
       if (p >= 1) {
@@ -724,7 +850,9 @@ export class FoxScene {
     const calm = Math.max(this.drowsy * 0.9, this.guideMix * (0.25 + 0.4 * (1 - this.guideFull)));
     // Quand il somnole, les paupières peuvent descendre plus bas (yeux presque fermés)
     const lidMax = LID_MAX + this.drowsy * 0.4;
-    const lid = Math.min(lidMax, (Math.max(b.lids * (1 - happy) * 0.75, calm) + blink) * lidMax);
+    let lid = Math.min(lidMax, (Math.max(b.lids * (1 - happy) * 0.75, calm) + blink) * lidMax);
+    // Widget : l'image est petite, le clignement va jusqu'aux yeux fermés pour se voir
+    if (this.blinkOverride) lid = Math.max(lid, this.blinkOverride * this.widgetBlinkLid);
     for (const name of ['Fox_UpperLEyelid', 'Fox_UpperREyelid']) {
       this.bones[name]?.quaternion.multiply(q.setFromAxisAngle(Z, lid));
     }

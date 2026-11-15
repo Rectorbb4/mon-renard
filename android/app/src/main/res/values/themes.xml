@@ -8,4 +8,17 @@
         <item name="android:statusBarColor">@color/app_bg</item>
         <item name="android:navigationBarColor">@color/app_bg</item>
     </style>
+
+    <!-- « z z z » au-dessus du renard qui dort (widget, la nuit) : lisible sur tous les fonds d'écran -->
+    <style name="WidgetSleep">
+        <item name="android:text">z z z</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold|italic</item>
+        <item name="android:shadowColor">#99000000</item>
+        <item name="android:shadowRadius">4</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:visibility">gone</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
 </resources>

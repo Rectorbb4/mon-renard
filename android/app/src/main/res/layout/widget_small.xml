@@ -1,24 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Petit widget : le renard animé, sans fond, posé sur le fond d'écran, et son humeur dessous. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@android:id/background"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:clipToOutline="true">
+    android:layout_height="match_parent">
 
-    <ImageView
-        android:id="@+id/fox"
+    <include
+        layout="@layout/widget_fox"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:src="@drawable/fox_equilibre" />
+        android:layout_marginBottom="22dp" />
+
+    <TextView
+        android:id="@+id/zz"
+        style="@style/WidgetSleep"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="10dp" />
 
     <TextView
         android:id="@+id/mood"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="2dp"
         android:background="@drawable/chip_bg"
         android:paddingHorizontal="12dp"
         android:paddingVertical="3dp"

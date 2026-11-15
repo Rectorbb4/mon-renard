@@ -6,14 +6,16 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.net.Uri;
+import android.view.View;
 import android.widget.RemoteViews;
 
 import java.util.Calendar;
 import java.util.Locale;
 
 /**
- * Widget du renard : l'image suit l'humeur du dernier check-in, et il somnole la nuit.
+ * Widget du renard, animé et sans fond : il prend l'humeur du dernier check-in, et il somnole la nuit.
  * Android le redessine toutes les 30 minutes (voir res/xml/widget_*_info.xml) et à chaque check-in.
  */
 public abstract class FoxWidget extends AppWidgetProvider {
@@ -72,15 +74,35 @@ public abstract class FoxWidget extends AppWidgetProvider {
         return "Il attend de tes nouvelles";
     }
 
-    static int image(String mood, boolean night) {
-        if (mood == null) mood = "equilibre";
-        switch (mood) {
-            case "creux": return night ? R.drawable.fox_creux_nuit : R.drawable.fox_creux;
-            case "grisaille": return night ? R.drawable.fox_grisaille_nuit : R.drawable.fox_grisaille;
-            case "elan": return night ? R.drawable.fox_elan_nuit : R.drawable.fox_elan;
-            case "emballement": return night ? R.drawable.fox_emballement_nuit : R.drawable.fox_emballement;
-            default: return night ? R.drawable.fox_equilibre_nuit : R.drawable.fox_equilibre;
+    /** Nombre de cases du ViewFlipper (res/layout/widget_fox.xml) : deux tours de la boucle de repos. */
+    static final int SLOTS = 32;
+
+    /**
+     * Le renard animé : chaque case du ViewFlipper reçoit une image de la boucle de l'humeur.
+     * De jour, il cligne des yeux au second tour seulement ; la nuit, une boucle plus lente, yeux mi-clos.
+     * Images et vitesses sont fabriquées par tools/render-widget.mjs.
+     */
+    static void animate(Context ctx, RemoteViews v, String mood, boolean night) {
+        Resources res = ctx.getResources();
+        String pkg = ctx.getPackageName();
+        String m = mood != null && res.getIdentifier("fox_" + mood + "_ms", "integer", pkg) != 0 ? mood : "equilibre";
+        int frames = res.getInteger(R.integer.fox_frames);
+        int blinkAt = frames + res.getInteger(R.integer.fox_blink_at);
+        int nightFrames = res.getInteger(R.integer.fox_night_frames);
+        for (int i = 0; i < SLOTS; i++) {
+            int f = i % frames;
+            String name;
+            if (night) name = "fox_" + m + "_nuit_" + (f * nightFrames / frames);
+            else if (i == blinkAt) name = "fox_" + m + "_cligne_1";
+            else if (i == blinkAt + 1) name = "fox_" + m + "_cligne_2";
+            else name = String.format(Locale.ROOT, "fox_%s_%02d", m, f);
+            int slot = res.getIdentifier(String.format(Locale.ROOT, "f%02d", i), "id", pkg);
+            int image = res.getIdentifier(name, "drawable", pkg);
+            if (slot != 0 && image != 0) v.setImageViewResource(slot, image);
         }
+        int ms = night ? res.getInteger(R.integer.fox_night_ms) : res.getInteger(res.getIdentifier("fox_" + m + "_ms", "integer", pkg));
+        v.setInt(R.id.fox, "setFlipInterval", ms);
+        v.setViewVisibility(R.id.zz, night ? View.VISIBLE : View.GONE);
     }
 
     static RemoteViews build(Context ctx, boolean large, long now) {
@@ -89,7 +111,7 @@ public abstract class FoxWidget extends AppWidgetProvider {
         String label = s.mood != null && s.label != null && !s.label.isEmpty() ? s.label : "Ton renard";
 
         RemoteViews v = new RemoteViews(ctx.getPackageName(), large ? R.layout.widget_large : R.layout.widget_small);
-        v.setImageViewResource(R.id.fox, image(s.mood, night));
+        animate(ctx, v, s.mood, night);
         v.setContentDescription(R.id.fox, "Ton renard. Humeur : " + label);
         v.setTextViewText(R.id.mood, label);
         v.setOnClickPendingIntent(android.R.id.background, open(ctx, null));
