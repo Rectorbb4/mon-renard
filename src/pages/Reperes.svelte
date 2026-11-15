@@ -1,4 +1,6 @@
 <script lang="ts">
+  import BackupCard from '../components/BackupCard.svelte';
+
   const NUMBERS = [
     {
       number: '3114',
@@ -50,13 +52,7 @@
     </p>
   </div>
 
-  <div class="note">
-    <h2>Tes données</h2>
-    <p>
-      Tout reste sur ce téléphone : pas de compte, pas de serveur, rien n'est envoyé. Une sauvegarde manuelle
-      (export et import) arrivera dans une prochaine version.
-    </p>
-  </div>
+  <BackupCard />
 
   <div class="note credits">
     <h2>Crédits</h2>

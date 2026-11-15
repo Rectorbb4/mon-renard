@@ -40,13 +40,20 @@ L'adresse est `https://<compte>.github.io/<dépôt>/`. Le chemin est pris automa
 
 Les mises à jour s'installent toutes seules au lancement suivant.
 
+## Sauvegarder ses données
+
+Dans **Repères → Tes données**, *Enregistrer une sauvegarde* met tout le journal (check-ins et moments « je le sens »)
+dans un fichier `mon-renard-sauvegarde-AAAA-MM-JJ.json`, rangé dans les téléchargements du téléphone.
+*Restaurer une sauvegarde* ajoute le contenu d'un tel fichier au journal, sans rien effacer ni créer de doublons.
+Le fichier n'est pas chiffré : il faut le garder dans un endroit sûr.
+
 ## Organisation du code
 
 | Dossier | Contenu |
 |---|---|
 | `src/pages/` | les écrans (accueil, Repères…) |
 | `src/lib/` | navigation, installation, journal des check-ins côté interface, logique partagée |
-| `src/data/` | base de données locale (IndexedDB via Dexie) : profils, check-ins, moments « je le sens » |
+| `src/data/` | base de données locale (IndexedDB via Dexie) : profils, check-ins, moments « je le sens », sauvegarde JSON |
 | `src/fox/` | la scène 3D du renard : humeurs, lumière, météo, réactions |
 | `src/components/` | morceaux d'interface réutilisables |
 | `public/` | icônes et images servies telles quelles |
