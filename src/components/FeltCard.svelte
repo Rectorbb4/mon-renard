@@ -5,7 +5,16 @@
   import type { FeltEvent } from '../data/types';
   import { cancelFelt, noteFelt } from '../lib/journal.svelte';
 
-  let { event, onclose }: { event: FeltEvent; onclose: (message: string | null) => void } = $props();
+  let {
+    event,
+    onclose,
+    onbreathe
+  }: {
+    event: FeltEvent;
+    onclose: (message: string | null) => void;
+    /** Enchaîner sur la respiration guidée (la note est enregistrée avant). */
+    onbreathe?: () => void;
+  } = $props();
 
   const start = (() => event)();
   let note = $state(start.note ?? '');
@@ -17,13 +26,14 @@
 
   onMount(() => heading.focus());
 
-  async function run(action: () => Promise<void>, message: string | null) {
+  async function run(action: () => Promise<void>, message: string | null, after?: () => void) {
     if (busy) return;
     busy = true;
     error = null;
     try {
       await action();
-      onclose(message);
+      if (after) after();
+      else onclose(message);
     } catch (e) {
       console.error(e);
       error = "Ça n'a pas pu être enregistré. Réessaie dans un instant.";
@@ -31,10 +41,12 @@
     }
   }
 
+  const saveNote = () => (note.trim() !== (start.note ?? '') ? noteFelt(start.id!, note) : Promise.resolve());
+
   function save(e: SubmitEvent) {
     e.preventDefault();
     const changed = note.trim() !== (start.note ?? '');
-    run(() => (changed ? noteFelt(start.id!, note) : Promise.resolve()), changed && note.trim() ? 'Note ajoutée.' : null);
+    run(saveNote, changed && note.trim() ? 'Note ajoutée.' : null);
   }
 </script>
 
@@ -61,6 +73,11 @@
   <button type="submit" class="primary" disabled={busy}>
     {note.trim() && note.trim() !== (start.note ?? '') ? 'Enregistrer la note' : 'Fermer'}
   </button>
+  {#if onbreathe}
+    <button type="button" class="breathe" disabled={busy} onclick={() => run(saveNote, null, onbreathe)}>
+      Respirer avec ton renard
+    </button>
+  {/if}
   <button type="button" class="undo" disabled={busy} onclick={() => run(() => cancelFelt(start.id!), 'Moment annulé.')}>
     C'était une erreur : annuler ce moment
   </button>
@@ -159,6 +176,18 @@
     font: inherit;
     font-weight: 700;
     font-size: 17px;
+    cursor: pointer;
+  }
+
+  .breathe {
+    min-height: 50px;
+    border: 1.5px solid var(--breath);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--breath) 10%, var(--surface));
+    color: var(--breath);
+    font: inherit;
+    font-weight: 700;
+    font-size: 16px;
     cursor: pointer;
   }
 

@@ -8,13 +8,19 @@
   let {
     mood,
     compact = false,
-    reactSignal = 0
+    reactSignal = 0,
+    guide = null,
+    calm = false
   }: {
     mood: MoodId;
     /** Scène moins haute, pour laisser la place au check-in. */
     compact?: boolean;
+    /** Scène un peu moins haute, pour que le guide de respiration tienne sur l'écran. */
+    calm?: boolean;
     /** Chaque changement de ce nombre fait réagir le renard. */
     reactSignal?: number;
+    /** Respiration guidée : air dans les poumons (0 à 1), lu à chaque image. */
+    guide?: (() => number) | null;
   } = $props();
 
   let host: HTMLDivElement;
@@ -72,6 +78,11 @@
     scene?.setMood(next);
   });
 
+  $effect(() => {
+    const next = guide;
+    scene?.setGuide(next);
+  });
+
   let lastSignal = 0;
   $effect(() => {
     const signal = reactSignal;
@@ -94,6 +105,7 @@
   class="stage"
   class:ready={status === 'ready'}
   class:compact
+  class:calm
   role="img"
   aria-label={`Ton renard. ${MOODS[mood].caption}`}
 >
@@ -130,6 +142,11 @@
 
   .stage.compact {
     height: min(36vh, 320px);
+  }
+
+  .stage.calm {
+    height: min(calc(100svh - var(--nav-h) - 390px), 112vw, 560px);
+    min-height: 240px;
   }
 
   @media (prefers-reduced-motion: reduce) {

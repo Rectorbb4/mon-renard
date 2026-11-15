@@ -168,6 +168,11 @@ export class FoxScene {
   private blinkStart = -1;
   private reactUntil = 0;
 
+  // Respiration guidée : la fonction donne l'air dans les poumons (0 = vide, 1 = plein)
+  private guide: (() => number) | null = null;
+  private guideMix = 0;
+  private guideFull = 0;
+
   // Interaction
   private dragYaw = 0;
   private pointer: { id: number; x: number; y: number; t: number; moved: number } | null = null;
@@ -506,10 +511,20 @@ export class FoxScene {
   /** Le renard réagit (toucher, ou appel depuis l'interface). */
   react(): void {
     if (!this.mixer || this.busy === 'transition') return;
-    this.playGesture(this.mood.reaction, 'gesture', 0.2);
+    // Pendant la respiration guidée, il se contente de lever la tête et les oreilles
+    if (!this.guide) this.playGesture(this.mood.reaction, 'gesture', 0.2);
     this.reactUntil = this.time + 1.6;
     this.blinkStart = -1;
     this.opts.onReact?.();
+  }
+
+  /**
+   * Respiration guidée : le renard respire au rythme donné, plus amplement, l'air calme,
+   * et la lumière derrière lui grandit à chaque inspiration. `null` lui rend son rythme.
+   */
+  setGuide(guide: (() => number) | null): void {
+    this.guide = guide;
+    if (guide && this.busy === 'gesture') this.playBase(0.6);
   }
 
   dispose(): void {
@@ -615,9 +630,18 @@ export class FoxScene {
     this.renderer.toneMappingExposure = b.exposure;
     this.updateWeather(dt, b);
 
+    // Respiration guidée : entrée et sortie en douceur, lumière qui suit le souffle
+    this.guideMix += ((this.guide ? 1 : 0) - this.guideMix) * (1 - Math.exp(-dt * 1.5));
+    if (this.guide) this.guideFull = Math.min(1, Math.max(0, this.guide()));
+    const gm = this.guideMix;
+    const gf = this.guideFull;
+    this.glow.scale.setScalar(5 * (1 + gm * (0.15 + 0.45 * gf)));
+    (this.glow.material as THREE.SpriteMaterial).opacity = Math.min(1, b.glowOpacity + gm * (0.15 + 0.35 * gf));
+    this.rim.intensity = 0.7 + gm * (0.2 + 0.9 * gf);
+
     // 3. Animation du squelette
     if (this.mixer) {
-      if (this.busy === null && t >= this.nextGestureAt && this.mood.gestures.length) {
+      if (this.busy === null && !this.guide && t >= this.nextGestureAt && this.mood.gestures.length) {
         const g = this.mood.gestures[Math.floor(Math.random() * this.mood.gestures.length)];
         this.playGesture(g);
       }
@@ -663,7 +687,9 @@ export class FoxScene {
       const restlessLook = this.reducedMotion ? 0 : b.restless * 0.12 * Math.sin(t * 3.1) * Math.sin(t * 1.7);
       // Axe Z local : positif = museau vers le bas
       head.quaternion.multiply(q.setFromAxisAngle(Z, b.headDown * (1 - happy * 0.8)));
-      head.quaternion.multiply(q.setFromAxisAngle(Y, restlessLook));
+      head.quaternion.multiply(q.setFromAxisAngle(Y, restlessLook * (1 - this.guideMix)));
+      // En respiration guidée, le museau se lève un peu à l'inspiration
+      head.quaternion.multiply(q.setFromAxisAngle(Z, -this.guideMix * (0.03 + 0.1 * this.guideFull)));
     }
 
     // Oreilles couchées
@@ -685,14 +711,18 @@ export class FoxScene {
         this.nextBlinkAt = t + randomBetween(this.mood.blinkEvery);
       }
     }
-    const lid = Math.min(LID_MAX, (b.lids * (1 - happy) * 0.75 + blink) * LID_MAX);
+    // En respiration guidée, les yeux se plissent doucement à l'expiration
+    const calm = this.guideMix * (0.25 + 0.4 * (1 - this.guideFull));
+    const lid = Math.min(LID_MAX, (Math.max(b.lids * (1 - happy) * 0.75, calm) + blink) * LID_MAX);
     for (const name of ['Fox_UpperLEyelid', 'Fox_UpperREyelid']) {
       this.bones[name]?.quaternion.multiply(q.setFromAxisAngle(Z, lid));
     }
 
     // Respiration : la cage thoracique gonfle doucement (les enfants gardent leur taille)
     this.breathPhase += dt * b.breathRate * 1.4;
-    const breath = 1 + Math.sin(this.breathPhase) * 0.022 * b.breathDepth;
+    const own = Math.sin(this.breathPhase) * 0.022 * b.breathDepth;
+    const guided = (this.guideFull - 0.5) * 0.08;
+    const breath = 1 + own * (1 - this.guideMix) + guided * this.guideMix;
     const ribs = this.bones.Fox_Ribcage;
     if (ribs) {
       ribs.scale.multiplyScalar(breath);

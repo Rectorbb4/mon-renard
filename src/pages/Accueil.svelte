@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BreathPanel from '../components/BreathPanel.svelte';
   import CheckInPanel from '../components/CheckInPanel.svelte';
   import FeltCard from '../components/FeltCard.svelte';
   import FoxStage from '../components/FoxStage.svelte';
@@ -82,6 +83,25 @@
     if (message) feltTimer = setTimeout(() => (feltMessage = null), 4000);
   }
 
+  // Respiration guidée : le panneau remplace les boutons, le renard respire au même rythme.
+  let breathing = $state(false);
+  let guide = $state.raw<(() => number) | null>(null);
+
+  function openBreath() {
+    felt = null;
+    thanks = false;
+    feltMessage = null;
+    breathing = true;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function closeBreath(next: 'checkin' | null) {
+    breathing = false;
+    guide = null;
+    if (next === 'checkin') openCheckIn();
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function greeting(date: Date): string {
     const h = date.getHours();
     if (h < 5) return 'Bonne nuit';
@@ -93,13 +113,16 @@
 </script>
 
 <section class="home">
-  <header>
-    <p class="date">{today}</p>
-    <h1>{greeting(new Date())}</h1>
-  </header>
+  {#if !breathing}
+    <header>
+      <p class="date">{today}</p>
+      <h1>{greeting(new Date())}</h1>
+    </header>
+  {/if}
 
-  <FoxStage {mood} compact={checking} {reactSignal} />
+  <FoxStage {mood} compact={checking} calm={breathing} {reactSignal} {guide} />
 
+  {#if !breathing}
   <div class="mood-line" aria-live="polite">
     <p class="mood-name">{MOODS[mood].label}</p>
     <p class="mood-caption">{MOODS[mood].caption}</p>
@@ -115,6 +138,7 @@
       {/if}
     {/if}
   </div>
+  {/if}
 
   {#if journal.error}
     <p class="storage-error" role="alert">{journal.error}</p>
@@ -122,8 +146,10 @@
 
   {#if checking}
     <CheckInPanel previous={journal.last} onpreview={(v) => (preview = v)} ondone={closeCheckIn} />
+  {:else if breathing}
+    <BreathPanel onguide={(g) => (guide = g)} oncomplete={() => (reactSignal += 1)} onclose={closeBreath} />
   {:else if felt}
-    <FeltCard event={felt} onclose={closeFelt} />
+    <FeltCard event={felt} onclose={closeFelt} onbreathe={openBreath} />
   {:else}
     <button class="checkin" type="button" onclick={openCheckIn} disabled={!!journal.error}>
       <span class="checkin-title">Comment ça va ?</span>
@@ -149,9 +175,17 @@
         {/if}
       </p>
     </div>
+
+    <button class="breathe" type="button" onclick={openBreath}>
+      <span class="breathe-icon" aria-hidden="true"></span>
+      <span class="breathe-text">
+        <span class="breathe-title">Respirer avec ton renard</span>
+        <span class="breathe-sub">Inspire 4 s, expire 6 s · 1 à 3 minutes</span>
+      </span>
+    </button>
   {/if}
 
-  {#if !checking && !felt}
+  {#if !checking && !felt && !breathing}
     {#if install.available}
       <button class="install" type="button" onclick={promptInstall}>Installer sur l'écran d'accueil</button>
     {:else if install.installed}
@@ -331,6 +365,69 @@
     font-weight: 700;
     text-decoration: underline;
     cursor: pointer;
+  }
+
+  .breathe {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 60px;
+    padding: 10px 20px;
+    margin-top: -10px;
+    border: 1.5px solid color-mix(in srgb, var(--breath) 55%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--breath) 8%, var(--surface));
+    color: var(--fg);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .breathe:active {
+    transform: scale(0.98);
+  }
+
+  .breathe-icon {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid var(--breath);
+    background: radial-gradient(circle, var(--breath) 0 30%, transparent 32%);
+    animation: breathe 10s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale(0.8);
+    }
+    40% {
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .breathe-icon {
+      animation: none;
+    }
+  }
+
+  .breathe-text {
+    display: grid;
+  }
+
+  .breathe-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--breath);
+  }
+
+  .breathe-sub {
+    font-size: 14px;
+    color: var(--muted);
   }
 
   .install {

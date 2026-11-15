@@ -14,6 +14,8 @@
   --felt: #5354c9;
   --felt-fg: #ffffff;
   --sleep: #2a8a98;
+  --breath: #24786b;
+  --breath-fg: #ffffff;
   --sky-top: #9fd0ea;
   --sky-bottom: #f6dfc6;
 
@@ -40,6 +42,8 @@
     --felt: #a9aaff;
     --felt-fg: #15153d;
     --sleep: #6fd0dc;
+    --breath: #7fd6c4;
+    --breath-fg: #0c2420;
     --sky-top: #24415c;
     --sky-bottom: #7a5a6e;
     color-scheme: dark;
