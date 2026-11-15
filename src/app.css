@@ -1,0 +1,98 @@
+/* Mise en page : une colonne étroite pensée pour le téléphone, barre de navigation fixe en bas. */
+:root {
+  --bg: #edf2f1;
+  --surface: #ffffff;
+  --surface-2: #e2eae9;
+  --fg: #16232c;
+  --muted: #55646d;
+  --line: #d2dcdf;
+  --accent: #c9551f;
+  --accent-fg: #ffffff;
+  --urgent: #b3261e;
+  --urgent-fg: #ffffff;
+  --sky-top: #9fd0ea;
+  --sky-bottom: #f6dfc6;
+
+  --font-display: 'Bricolage Grotesque Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+
+  --radius: 18px;
+  --nav-h: 64px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #13202b;
+    --surface: #1b2b38;
+    --surface-2: #223644;
+    --fg: #e8eef1;
+    --muted: #9fb0ba;
+    --line: #2b3d4a;
+    --accent: #f28a52;
+    --accent-fg: #1a0f08;
+    --urgent: #ff8a80;
+    --urgent-fg: #2a0705;
+    --sky-top: #24415c;
+    --sky-bottom: #7a5a6e;
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  line-height: 1.1;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

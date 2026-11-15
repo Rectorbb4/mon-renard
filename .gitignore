@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dev-dist/
+*.log
+.DS_Store
+
+# Brief personnel : contient des informations privées, ne doit pas aller sur le dépôt public
+prompt-claude-code-renard.md
+
+# Prototypes et aperçus de travail (non utilisés par l'appli)
+design/
+
+# Réglages locaux de Claude Code
+.claude/

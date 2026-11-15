@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  Outil de développement (non publié) : fait le rendu du renard 3D pour fabriquer les icônes de l'appli.
+  Paramètres : ?size=512&mode=portrait|icon|maskable
+  Utilisé par tools/make-icons.mjs, qui ouvre cette page dans Chrome sans fenêtre et prend la capture.
+-->
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rendu des icônes</title>
+    <style>
+      html, body { margin: 0; overflow: hidden; }
+      body.bg { background: linear-gradient(160deg, #ffb27a 0%, #e8692c 55%, #b84a1b 100%); }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+      const params = new URLSearchParams(location.search);
+      const size = Number(params.get('size') || 512);
+      const mode = params.get('mode') || 'icon';
+      if (mode !== 'portrait') document.body.classList.add('bg');
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(size, size);
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a6a, 1.6));
+      const key = new THREE.DirectionalLight(0xfff2e0, 1.7);
+      key.position.set(-1.2, 2.2, 2.4);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 1.2);
+      rim.position.set(2, 1.5, -2);
+      scene.add(rim);
+
+      const gltf = await new GLTFLoader().loadAsync('/assets/fox.glb');
+      const fox = gltf.scene;
+      // La fourrure sort trop brillante avec ce matériau : on la rend plus mate.
+      fox.traverse((o) => {
+        if (o.isMesh && o.material) {
+          o.material.roughness = Math.max(o.material.roughness ?? 1, 0.75);
+          o.material.metalness = 0;
+        }
+      });
+      scene.add(fox);
+
+      const mixer = new THREE.AnimationMixer(fox);
+      const clip = gltf.animations.find((c) => c.name === 'Fox_Sit2_Idle') || gltf.animations[0];
+      mixer.clipAction(clip).play();
+      mixer.update(0.4);
+      fox.updateMatrixWorld(true);
+
+      // Mesures à partir des os, dans la pose jouée
+      const bones = {};
+      fox.traverse((o) => { if (o.isBone) bones[o.name.replace(/_\d+$/, '')] = o; });
+      const pos = (name) => bones[name].getWorldPosition(new THREE.Vector3());
+      const box = new THREE.Box3();
+      Object.values(bones).forEach((b) => box.expandByPoint(b.getWorldPosition(new THREE.Vector3())));
+      const height = box.max.y - box.min.y;
+
+      const head = pos('Fox_Head');
+      const eyes = pos('Fox_LEye').add(pos('Fox_REye')).multiplyScalar(0.5);
+
+      // Le renard regarde vers +Z ou -Z selon l'export : on se place du côté de son museau.
+      const facing = new THREE.Vector3().subVectors(eyes, head).setY(0).normalize();
+      const camera = new THREE.PerspectiveCamera(30, 1, height / 100, height * 50);
+
+      let target, distance;
+      if (mode === 'portrait') {
+        target = new THREE.Vector3((box.min.x + box.max.x) / 2, box.min.y + height * 0.5, (box.min.z + box.max.z) / 2);
+        distance = height * 2.9;
+      } else {
+        // Tête et épaules, centrées un peu au-dessus des yeux
+        target = eyes.clone().add(new THREE.Vector3(0, height * 0.02, 0));
+        distance = height * (mode === 'maskable' ? 2.15 : 1.75);
+      }
+      const side = new THREE.Vector3().crossVectors(facing, new THREE.Vector3(0, 1, 0)).normalize();
+      const sideAmount = mode === 'portrait' ? -0.45 : 0.25;
+      camera.position.copy(target)
+        .addScaledVector(facing, distance * 0.92)
+        .addScaledVector(side, distance * sideAmount)
+        .add(new THREE.Vector3(0, height * 0.12, 0));
+      camera.lookAt(target);
+
+      renderer.render(scene, camera);
+      window.__ready = true;
+    </script>
+  </body>
+</html>
