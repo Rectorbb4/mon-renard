@@ -10,6 +10,8 @@ const basePath = process.env.BASE_PATH ?? '/mon-renard/';
 export default defineConfig(({ command, isPreview }) => ({
   // En développement l'appli est à la racine ; la version construite (et son aperçu local) sous basePath.
   base: command === 'build' || isPreview ? basePath : '/',
+  // three.js pèse environ 650 ko ; il est chargé à part, seulement quand le renard s'affiche.
+  build: { chunkSizeWarningLimit: 700 },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
@@ -41,7 +43,9 @@ export default defineConfig(({ command, isPreview }) => ({
       },
       workbox: {
         // Tout ce qui est nécessaire pour fonctionner hors ligne est mis en cache à l'installation.
-        globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest}'],
+        // Le modèle 3D du renard (fox.glb) en fait partie : il pèse environ 9 Mo, d'où la limite relevée.
+        globPatterns: ['**/*.{js,css,html,png,svg,webp,woff2,webmanifest,glb}'],
+        maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true
       },

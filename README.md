@@ -46,8 +46,10 @@ Les mises à jour s'installent toutes seules au lancement suivant.
 |---|---|
 | `src/pages/` | les écrans (accueil, Repères…) |
 | `src/lib/` | navigation, installation, logique partagée |
+| `src/fox/` | la scène 3D du renard : humeurs, lumière, météo, réactions |
+| `src/components/` | morceaux d'interface réutilisables |
 | `public/` | icônes et images servies telles quelles |
-| `assets/fox.glb` | le modèle 3D du renard (source) |
+| `public/models/fox.glb` | le modèle 3D du renard |
 | `tools/` | outils de développement, par exemple le rendu des icônes à partir du modèle 3D |
 
 ## Crédits

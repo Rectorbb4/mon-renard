@@ -40,7 +40,7 @@
       rim.position.set(2, 1.5, -2);
       scene.add(rim);
 
-      const gltf = await new GLTFLoader().loadAsync('/assets/fox.glb');
+      const gltf = await new GLTFLoader().loadAsync('/models/fox.glb');
       const fox = gltf.scene;
       // La fourrure sort trop brillante avec ce matériau : on la rend plus mate.
       fox.traverse((o) => {

@@ -1,8 +1,28 @@
 <script lang="ts">
+  import FoxStage from '../components/FoxStage.svelte';
   import { install, promptInstall } from '../lib/install.svelte';
   import { hrefFor } from '../lib/router';
+  import { MOOD_IDS, MOODS, isMoodId, type MoodId } from '../fox/moods';
 
-  const portrait = `${import.meta.env.BASE_URL}renard-portrait.png`;
+  // Provisoire : en attendant le check-in (étape 2), on choisit l'humeur à la main.
+  const STORAGE_KEY = 'mon-renard:essai-humeur';
+  function savedMood(): MoodId {
+    try {
+      const v = localStorage.getItem(STORAGE_KEY);
+      return isMoodId(v) ? v : 'equilibre';
+    } catch {
+      return 'equilibre';
+    }
+  }
+  let mood = $state<MoodId>(savedMood());
+  function choose(id: MoodId) {
+    mood = id;
+    try {
+      localStorage.setItem(STORAGE_KEY, id);
+    } catch {
+      /* stockage indisponible : ça marche quand même */
+    }
+  }
 
   function greeting(date: Date): string {
     const h = date.getHours();
@@ -20,16 +40,33 @@
     <h1>{greeting(new Date())}</h1>
   </header>
 
-  <div class="stage">
-    <img src={portrait} alt="Ton renard, assis, qui te regarde" width="512" height="512" />
+  <FoxStage {mood} />
+
+  <div class="mood-line">
+    <p class="mood-name">{MOODS[mood].label}</p>
+    <p class="mood-caption">{MOODS[mood].caption}</p>
   </div>
 
   <div class="card">
-    <h2>Ton renard s'installe</h2>
-    <p>
-      Cette première version pose les fondations : l'appli s'installe sur ton téléphone et marche sans connexion.
-      À la prochaine étape, ton renard prend vie en 3D et change avec ton humeur.
-    </p>
+    <h2>Essayer une humeur</h2>
+    <p>Bientôt, ton renard suivra ce que tu notes. En attendant, choisis une humeur pour le voir changer. Touche-le pour qu'il réagisse.</p>
+    <div class="moods" role="radiogroup" aria-label="Humeur du renard">
+      {#each MOOD_IDS as id (id)}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mood === id}
+          class="mood"
+          class:selected={mood === id}
+          style:--top={MOODS[id].sky.top}
+          style:--bottom={MOODS[id].sky.bottom}
+          onclick={() => choose(id)}
+        >
+          <span class="swatch"></span>
+          {MOODS[id].label}
+        </button>
+      {/each}
+    </div>
   </div>
 
   {#if install.available}
@@ -63,20 +100,55 @@
     font-weight: 700;
   }
 
-  .stage {
-    border-radius: var(--radius);
-    background: linear-gradient(var(--sky-top), var(--sky-bottom));
-    aspect-ratio: 1;
-    max-width: 100%;
+  .mood-line {
     display: grid;
-    place-items: end center;
-    overflow: hidden;
+    gap: 2px;
+    margin-top: -4px;
   }
 
-  .stage img {
-    width: 92%;
-    height: auto;
-    display: block;
+  .mood-name {
+    font-weight: 700;
+    font-size: 22px;
+  }
+
+  .mood-caption {
+    color: var(--muted);
+  }
+
+  .moods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .mood {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 14px 6px 8px;
+    border-radius: 999px;
+    border: 1.5px solid var(--line);
+    background: var(--surface-2);
+    color: var(--fg);
+    font: inherit;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .mood.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    font-weight: 700;
+  }
+
+  .swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(var(--top), var(--bottom));
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
   }
 
   .card {
