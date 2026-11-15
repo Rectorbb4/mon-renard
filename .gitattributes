@@ -6,3 +6,4 @@ gradlew text eol=lf
 *.jar binary
 *.webp binary
 *.glb binary
+*.stl binary

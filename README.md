@@ -105,6 +105,9 @@ Le code des capteurs est dans `src/sensors/` :
 Web Bluetooth marche dans Chrome (appli installée depuis Chrome), mais **pas** dans l'appli Android : il faudra
 y brancher les capteurs en Bluetooth natif, dans `LiveService.java`, qui tourne déjà en arrière-plan pour la démo.
 
+La liste du matériel, l'emplacement des capteurs sur le corps et le boîtier à imprimer en 3D sont dans
+[`materiel/`](materiel/README.md).
+
 ## Sauvegarder ses données
 
 Dans **Repères → Tes données**, *Enregistrer une sauvegarde* met tout le journal (check-ins et moments « je le sens »)
