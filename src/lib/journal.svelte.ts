@@ -3,7 +3,8 @@
 import { liveQuery } from 'dexie';
 import { addCheckIn, ensureProfile, lastCheckIn, sleepNotedToday } from '../data/checkins';
 import { getDB } from '../data/db';
-import type { CheckIn, CheckInInput } from '../data/types';
+import { addFeltEvent, deleteFeltEvent, lastFeltEvent, setFeltNote } from '../data/events';
+import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
 
 export const journal = $state({
   /** La base est ouverte et le profil connu. */
@@ -11,7 +12,9 @@ export const journal = $state({
   /** La base locale n'a pas pu s'ouvrir (navigation privée stricte, stockage plein…). */
   error: null as string | null,
   profileId: null as number | null,
-  last: null as CheckIn | null
+  last: null as CheckIn | null,
+  /** Le dernier moment « je le sens ». */
+  lastFelt: null as FeltEvent | null
 });
 
 let started: Promise<void> | null = null;
@@ -39,6 +42,10 @@ export function startJournal(): Promise<void> {
           journal.error = "Tes check-ins n'ont pas pu être lus sur ce téléphone.";
         }
       });
+      liveQuery(() => lastFeltEvent(db, profileId)).subscribe({
+        next: (e) => (journal.lastFelt = e ?? null),
+        error: (e) => console.error(e)
+      });
     } catch (e) {
       console.error(e);
       journal.error = "Le stockage du téléphone n'est pas disponible. Les check-ins ne pourront pas être gardés.";
@@ -54,6 +61,29 @@ export async function saveCheckIn(input: CheckInInput): Promise<CheckIn> {
   journal.last = saved;
   askPersistentStorage();
   return saved;
+}
+
+async function profile(): Promise<number> {
+  await startJournal();
+  if (journal.profileId == null) throw new Error(journal.error ?? 'Stockage indisponible');
+  return journal.profileId;
+}
+
+/** « Je le sens » : note l'instant tout de suite. */
+export async function feelIt(): Promise<FeltEvent> {
+  const event = await addFeltEvent(getDB(), await profile());
+  journal.lastFelt = event;
+  askPersistentStorage();
+  return event;
+}
+
+export async function noteFelt(id: number, note: string): Promise<void> {
+  await setFeltNote(getDB(), id, note);
+}
+
+/** Annule un moment noté par erreur. */
+export async function cancelFelt(id: number): Promise<void> {
+  await deleteFeltEvent(getDB(), id);
 }
 
 export async function isSleepNotedToday(): Promise<boolean> {

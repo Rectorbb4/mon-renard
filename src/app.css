@@ -10,6 +10,9 @@
   --accent-fg: #ffffff;
   --urgent: #b3261e;
   --urgent-fg: #ffffff;
+  /* « Je le sens » : un indigo calme, distinct de l'orange du check-in */
+  --felt: #5354c9;
+  --felt-fg: #ffffff;
   --sky-top: #9fd0ea;
   --sky-bottom: #f6dfc6;
 
@@ -33,6 +36,8 @@
     --accent-fg: #1a0f08;
     --urgent: #ff8a80;
     --urgent-fg: #2a0705;
+    --felt: #a9aaff;
+    --felt-fg: #15153d;
     --sky-top: #24415c;
     --sky-bottom: #7a5a6e;
     color-scheme: dark;
