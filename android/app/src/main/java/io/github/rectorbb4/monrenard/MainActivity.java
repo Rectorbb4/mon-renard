@@ -178,12 +178,29 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        // La page reprend les mesures en direct
+        LiveService.stop(this);
     }
 
+    /**
+     * L'appli quitte l'écran : la page arrête ses mesures. Si le widget affiche un pouls en direct,
+     * le service prend le relais (démarré ici, tant que l'appli est encore visible, comme Android l'exige).
+     */
     @Override
     protected void onPause() {
+        LiveService.startIfLive(this);
         web.onPause();
         super.onPause();
+    }
+
+    /** Une fois : autorisation d'afficher la notification « Démo en direct » (Android 13 et plus). */
+    void askNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        android.content.SharedPreferences p = getSharedPreferences("widget", MODE_PRIVATE);
+        if (p.getBoolean("askedNotifications", false)) return;
+        p.edit().putBoolean("askedNotifications", true).apply();
+        runOnUiThread(() -> requestPermissions(new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, 7));
     }
 
     @Override

@@ -1,7 +1,7 @@
 // Le lien entre la base locale et l'interface : profil actif et dernier check-in, tenus à jour en direct.
 
 import { liveQuery } from 'dexie';
-import { addCheckIn, ensureProfile, lastCheckIn, sleepNotedToday } from '../data/checkins';
+import { addCheckIn, ensureProfile, lastCheckIn, lastSleepCheckIn, sleepNotedToday } from '../data/checkins';
 import { getDB } from '../data/db';
 import { addFeltEvent, deleteFeltEvent, lastFeltEvent, setFeltNote } from '../data/events';
 import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
@@ -14,6 +14,8 @@ export const journal = $state({
   error: null as string | null,
   profileId: null as number | null,
   last: null as CheckIn | null,
+  /** Le dernier check-in où la nuit a été notée (jauge « nuit »). */
+  lastSleep: null as CheckIn | null,
   /** Le dernier moment « je le sens ». */
   lastFelt: null as FeltEvent | null
 });
@@ -43,6 +45,10 @@ export function startJournal(): Promise<void> {
           journal.error = "Tes check-ins n'ont pas pu être lus sur ce téléphone.";
         }
       });
+      liveQuery(() => lastSleepCheckIn(db, profileId)).subscribe({
+        next: (c) => (journal.lastSleep = c ?? null),
+        error: (e) => console.error(e)
+      });
       liveQuery(() => lastFeltEvent(db, profileId)).subscribe({
         next: (e) => (journal.lastFelt = e ?? null),
         error: (e) => console.error(e)
@@ -51,7 +57,8 @@ export function startJournal(): Promise<void> {
       if (isAndroidApp()) {
         $effect.root(() => {
           $effect(() => {
-            if (journal.ready) updateWidget($state.snapshot(journal.last), $state.snapshot(journal.lastFelt));
+            if (journal.ready)
+              updateWidget($state.snapshot(journal.last), $state.snapshot(journal.lastFelt), $state.snapshot(journal.lastSleep));
           });
         });
       }
@@ -68,6 +75,7 @@ export async function saveCheckIn(input: CheckInInput): Promise<CheckIn> {
   if (journal.profileId == null) throw new Error(journal.error ?? 'Stockage indisponible');
   const saved = await addCheckIn(getDB(), journal.profileId, input);
   journal.last = saved;
+  if (saved.sleep != null) journal.lastSleep = saved;
   askPersistentStorage();
   return saved;
 }

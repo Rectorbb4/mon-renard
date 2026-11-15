@@ -3,6 +3,9 @@
   import CheckInPanel from '../components/CheckInPanel.svelte';
   import FeltCard from '../components/FeltCard.svelte';
   import FoxStage from '../components/FoxStage.svelte';
+  import Gauges from '../components/Gauges.svelte';
+  import LivePanel from '../components/LivePanel.svelte';
+  import { gaugeValues } from '../lib/gauges';
   import type { CheckIn, FeltEvent } from '../data/types';
   import { MOODS, moodFromScore, type MoodId } from '../fox/moods';
   import { getDB } from '../data/db';
@@ -37,6 +40,8 @@
   const mood: MoodId = $derived(
     checking && preview != null ? moodFromScore(preview) : journal.last ? moodFromScore(journal.last.mood) : 'equilibre'
   );
+
+  const gauges = $derived(gaugeValues(journal.last, journal.lastSleep, now));
 
   $effect(() => {
     const timer = setInterval(() => (now = Date.now()), 30_000);
@@ -173,6 +178,9 @@
       {/if}
     {/if}
   </div>
+  {#if !checking && gauges}
+    <Gauges values={gauges} />
+  {/if}
   {/if}
 
   {#if journal.error}
@@ -218,6 +226,8 @@
         <span class="breathe-sub">Inspire 4 s, expire 6 s · 1 à 3 minutes</span>
       </span>
     </button>
+
+    <LivePanel />
   {/if}
 
   {#if !checking && !felt && !breathing}

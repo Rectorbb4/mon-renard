@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Moitié gauche de la jauge d'humeur : elle se remplit depuis le milieu (à droite) vers la gauche. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:bottomLeftRadius="4dp" android:topLeftRadius="4dp" />
+                    <solid android:color="@color/gauge_track" />
+                </shape>
+            </item>
+            <!-- La zone d'équilibre (humeur au-dessus de -0,25) -->
+            <item android:gravity="end|fill_vertical" android:width="12dp">
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/gauge_calm" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip android:clipOrientation="horizontal" android:gravity="right">
+            <shape android:shape="rectangle">
+                <corners android:bottomLeftRadius="4dp" android:topLeftRadius="4dp" />
+                <solid android:color="@color/mood_low" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

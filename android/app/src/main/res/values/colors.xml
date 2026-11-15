@@ -11,4 +11,15 @@
     <color name="felt_bg">#EDEDFA</color>
     <color name="chip_bg">#E6FFFFFF</color>
     <color name="chip_fg">#16232C</color>
+    <!-- Jauges -->
+    <color name="mood_low">#4F6BB0</color>
+    <color name="energy">#B07A00</color>
+    <color name="sleep">#2A8A98</color>
+    <color name="gauge_track">#E2EAE9</color>
+    <color name="gauge_calm">#C6DDD8</color>
+    <color name="gauge_stale">#AEBBC0</color>
+    <color name="gauge_mid">#8C16232C</color>
+    <!-- Pouls -->
+    <color name="heart">#C2335A</color>
+    <color name="heart_bg">#F2FFFFFF</color>
 </resources>

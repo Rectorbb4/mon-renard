@@ -42,7 +42,7 @@
     <h2 id="android-title">Le widget du renard</h2>
     <p class="soft">
       Pose ton renard sur l’écran d’accueil : il prend l’humeur de ton dernier check-in et somnole la nuit. Le grand
-      widget a aussi les boutons « Comment ça va ? » et « Je le sens ».
+      widget a aussi ses jauges (humeur, énergie, nuit) et les boutons « Ça va ? » et « Je le sens ».
     </p>
     {#if pinnable}
       <div class="row">
@@ -66,8 +66,8 @@
   {:else}
     <h2 id="android-title">Le renard sur ton écran d’accueil</h2>
     <p class="soft">
-      Sur Android, une petite appli ajoute un widget : ton renard dans l’humeur de ton dernier check-in, avec les
-      raccourcis « Comment ça va ? » et « Je le sens ».
+      Sur Android, une petite appli ajoute un widget : ton renard dans l’humeur de ton dernier check-in, avec ses
+      jauges, ton pouls en direct, et les raccourcis « Comment ça va ? » et « Je le sens ».
     </p>
     {#if onAndroid}
       <a class="primary link-button" href={apkUrl} download>

@@ -46,7 +46,9 @@ Pour avoir le renard en widget sur l'écran d'accueil, il existe une petite appl
 Elle affiche le site en plein écran : les mises à jour du site y arrivent donc toutes seules. En plus, elle apporte :
 
 - un **petit widget** (2 × 2) : le renard, sans fond, dans l'humeur du dernier check-in ;
-- un **grand widget** (4 × 2) : le renard, son humeur, et les boutons *Comment ça va ?* et *Je le sens* ;
+- un **grand widget** (4 × 2) : le renard, son humeur, ses jauges (humeur, énergie, nuit) et les boutons *Ça va ?* et *Je le sens* ;
+- le **pouls en direct** sur les deux widgets, même appli fermée : un petit service Android prend le relais de la page,
+  avec une notification « Démo en direct » qui permet de l'arrêter (il s'arrête seul au bout d'une heure) ;
 - un renard **animé** (il respire, bouge, cligne des yeux) et somnolent la nuit, de 22 h à 7 h ;
 - les sauvegardes rangées directement dans les téléchargements.
 
@@ -79,6 +81,30 @@ ces images (un `ViewFlipper`, `res/layout/widget_fox.xml`, écrit lui aussi par 
 La version d'essai se teste dans un émulateur : lancer `npx vite --host 127.0.0.1 --port 5174`
 (l'émulateur voit l'ordinateur à l'adresse 10.0.2.2).
 
+## Jauges et mesures en direct
+
+Sur l'accueil, trois **jauges** résument le dernier check-in : l'humeur (centrée sur l'équilibre : la barre part
+à gauche quand elle baisse, à droite quand elle monte), l'énergie, et la nuit si elle a été notée aujourd'hui.
+Elles pâlissent quand le dernier check-in date de plus de 12 heures.
+
+Le panneau **En direct** affichera les mesures des capteurs portés : pouls, variabilité cardiaque (RMSSD) et
+conductance de la peau (GSR), avec la courbe du pouls des deux dernières minutes. Tant qu'aucun capteur n'est
+branché, une **démo** produit des valeurs simulées, toujours signalées comme telles.
+
+Le code des capteurs est dans `src/sensors/` :
+
+| Fichier | Rôle |
+|---|---|
+| `types.ts` | le modèle des mesures horodatées (pouls, intervalles RR, GSR, pouls optique, accéléromètre) et l'interface d'une source |
+| `simulator.ts` | la démo (valeurs plausibles, reproductibles) |
+| `metrics.ts` | RMSSD, fenêtre glissante |
+| `ble/heartRate.ts` | la ceinture cardio : service Bluetooth standard Heart Rate (0x180D), lecture des paquets 0x2A37 |
+| `ble/esp32.ts` | le boîtier ESP32 : service personnalisé et format des paquets **proposés** (le boîtier devra les suivre) |
+| `ble/webBluetooth.ts` | la connexion Web Bluetooth commune |
+
+Web Bluetooth marche dans Chrome (appli installée depuis Chrome), mais **pas** dans l'appli Android : il faudra
+y brancher les capteurs en Bluetooth natif, dans `LiveService.java`, qui tourne déjà en arrière-plan pour la démo.
+
 ## Sauvegarder ses données
 
 Dans **Repères → Tes données**, *Enregistrer une sauvegarde* met tout le journal (check-ins et moments « je le sens »)
@@ -94,6 +120,7 @@ Le fichier n'est pas chiffré : il faut le garder dans un endroit sûr.
 | `src/lib/` | navigation, installation, journal des check-ins côté interface, logique partagée |
 | `src/data/` | base de données locale (IndexedDB via Dexie) : profils, check-ins, moments « je le sens », sauvegarde JSON |
 | `src/fox/` | la scène 3D du renard : humeurs, lumière, météo, réactions |
+| `src/sensors/` | les mesures en continu : modèle, sources (démo, ceinture, boîtier), calculs |
 | `src/components/` | morceaux d'interface réutilisables |
 | `public/` | icônes et images servies telles quelles |
 | `public/models/fox.glb` | le modèle 3D du renard, allégé (2,4 Mo au lieu de 9,1) |

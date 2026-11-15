@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- « Je le sens » et la respiration guidée font vibrer le téléphone -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Mesures en direct quand l'appli est en arrière-plan (pour le widget) : service avec une notification -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -25,6 +29,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Pouls en direct pendant que l'appli est en arrière-plan (pour l'instant : la démo, valeurs simulées) -->
+        <service
+            android:name=".LiveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Affiche sur le widget le pouls mesuré en direct pendant que l'appli est en arrière-plan" />
+        </service>
 
         <!-- Petit widget : le renard seul -->
         <receiver

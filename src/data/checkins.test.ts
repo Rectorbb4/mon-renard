@@ -7,6 +7,7 @@ import {
   checkInsBetween,
   ensureProfile,
   lastCheckIn,
+  lastSleepCheckIn,
   normalizeCheckIn,
   sleepNotedToday,
   startOfDay
@@ -87,5 +88,17 @@ describe('base locale', () => {
     expect(await sleepNotedToday(db, me, NOON)).toBe(false);
     await addCheckIn(db, me, { mood: 0, energy: 0.5, sleep: 0.25 }, NOON - HOUR);
     expect(await sleepNotedToday(db, me, NOON)).toBe(true);
+  });
+
+  it('retrouve la dernière nuit notée, même si le dernier check-in ne la dit pas', async () => {
+    freshDB();
+    const me = await ensureProfile(db);
+    expect(await lastSleepCheckIn(db, me)).toBeUndefined();
+    await addCheckIn(db, me, { mood: 0, energy: 0.5, sleep: 0.25 }, NOON - 5 * HOUR);
+    await addCheckIn(db, me, { mood: 0, energy: 0.5, sleep: 0.75 }, NOON - 3 * HOUR);
+    await addCheckIn(db, me, { mood: 0.4, energy: 0.6 }, NOON);
+    const s = await lastSleepCheckIn(db, me);
+    expect(s?.sleep).toBe(0.75);
+    expect(s?.at).toBe(NOON - 3 * HOUR);
   });
 });

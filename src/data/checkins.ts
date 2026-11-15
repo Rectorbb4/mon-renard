@@ -50,6 +50,16 @@ export function lastCheckIn(db: RenardDB, profileId: number): Promise<CheckIn | 
     .last();
 }
 
+/** Le check-in le plus récent où la nuit a été notée, ou undefined. */
+export function lastSleepCheckIn(db: RenardDB, profileId: number): Promise<CheckIn | undefined> {
+  return db.checkins
+    .where('[profileId+at]')
+    .between([profileId, Dexie.minKey], [profileId, Dexie.maxKey])
+    .reverse()
+    .filter((c) => c.sleep != null)
+    .first();
+}
+
 /** Les check-ins du profil entre deux instants (bornes comprises), du plus ancien au plus récent. */
 export function checkInsBetween(db: RenardDB, profileId: number, from: number, to: number): Promise<CheckIn[]> {
   return db.checkins.where('[profileId+at]').between([profileId, from], [profileId, to], true, true).toArray();

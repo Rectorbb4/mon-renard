@@ -31,6 +31,23 @@ public class RenardBridge {
         FoxWidget.updateAll(activity);
     }
 
+    /** Pouls en direct (0 = plus de mesure) : seul le cœur du widget est redessiné, pas le renard. */
+    @JavascriptInterface
+    public void setLiveHeart(int bpm, boolean simulated) {
+        WidgetState.saveLive(activity, bpm, simulated);
+        FoxWidget.updateLive(activity);
+        if (bpm > 0) activity.askNotificationsOnce();
+    }
+
+    /** Vrai (une seule fois) si la démo a été arrêtée hors de l'appli, depuis la notification. */
+    @JavascriptInterface
+    public boolean takeLiveStoppedOutside() {
+        android.content.SharedPreferences p = activity.getSharedPreferences("widget", android.content.Context.MODE_PRIVATE);
+        boolean stopped = p.getBoolean("liveStoppedOutside", false);
+        if (stopped) p.edit().putBoolean("liveStoppedOutside", false).apply();
+        return stopped;
+    }
+
     /** Enregistre une sauvegarde JSON dans le dossier Téléchargements. Renvoie false en cas d'échec. */
     @JavascriptInterface
     public boolean saveFile(String name, String content) {

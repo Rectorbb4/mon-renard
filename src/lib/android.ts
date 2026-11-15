@@ -12,6 +12,9 @@ interface RenardAndroid {
   versionCode(): number;
   canPinWidget(): boolean;
   pinWidget(size: 'small' | 'large'): boolean;
+  /** Appli 1.2 et suivantes : pouls en direct (0 = plus de mesure). */
+  setLiveHeart?(bpm: number, simulated: boolean): void;
+  takeLiveStoppedOutside?(): boolean;
 }
 
 function bridge(): RenardAndroid | null {
@@ -22,30 +25,62 @@ export function isAndroidApp(): boolean {
   return bridge() != null;
 }
 
-/** Ce que le widget doit afficher : humeur du dernier check-in et heures des derniers instants. */
-export function widgetState(last: CheckIn | null, lastFelt: FeltEvent | null) {
+/**
+ * Ce que le widget doit afficher : humeur du dernier check-in, jauges (humeur, énergie, nuit)
+ * et heures des derniers instants. Le widget décide lui-même si la nuit date d'aujourd'hui.
+ */
+export function widgetState(last: CheckIn | null, lastFelt: FeltEvent | null, lastSleep: CheckIn | null = null) {
   const mood = last ? moodFromScore(last.mood) : null;
   return {
     mood,
     label: mood ? MOODS[mood].label : null,
     lastCheckIn: last?.at ?? 0,
-    lastFelt: lastFelt?.at ?? 0
+    lastFelt: lastFelt?.at ?? 0,
+    score: last?.mood ?? 0,
+    energy: last?.energy ?? 0,
+    sleep: lastSleep?.sleep ?? 0,
+    sleepAt: lastSleep?.sleep != null ? lastSleep.at : 0
   };
 }
 
 let lastSent = '';
 
 /** Met le widget à jour (seulement si quelque chose a changé). */
-export function updateWidget(last: CheckIn | null, lastFelt: FeltEvent | null): void {
+export function updateWidget(last: CheckIn | null, lastFelt: FeltEvent | null, lastSleep: CheckIn | null = null): void {
   const b = bridge();
   if (!b) return;
-  const json = JSON.stringify(widgetState(last, lastFelt));
+  const json = JSON.stringify(widgetState(last, lastFelt, lastSleep));
   if (json === lastSent) return;
   lastSent = json;
   try {
     b.setWidgetState(json);
   } catch (e) {
     console.error(e);
+  }
+}
+
+/**
+ * Pouls en direct sur le widget (appelé au plus toutes les 5 s). `bpm` à 0 efface l'affichage.
+ * Quand l'appli passe en arrière-plan, l'appli Android prend le relais elle-même.
+ * Sans effet hors de l'appli Android, ou avec une appli trop ancienne (avant la 1.2).
+ */
+export function updateLiveHeart(bpm: number, simulated: boolean): void {
+  const b = bridge();
+  if (!b?.setLiveHeart) return;
+  const value = Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm) : 0;
+  try {
+    b.setLiveHeart(value, simulated);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+/** Vrai si la démo a été arrêtée depuis la notification Android pendant que l'appli était en arrière-plan. */
+export function liveStoppedOutside(): boolean {
+  try {
+    return bridge()?.takeLiveStoppedOutside?.() ?? false;
+  } catch {
+    return false;
   }
 }
 

@@ -21,4 +21,18 @@
         <item name="android:visibility">gone</item>
         <item name="android:importantForAccessibility">no</item>
     </style>
+
+    <!-- « ♥ 72 · démo » : le pouls en direct, seulement pendant que l'appli mesure -->
+    <style name="WidgetHeart">
+        <item name="android:background">@drawable/chip_heart_bg</item>
+        <item name="android:paddingStart">7dp</item>
+        <item name="android:paddingEnd">7dp</item>
+        <item name="android:paddingTop">1dp</item>
+        <item name="android:paddingBottom">1dp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/heart</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:visibility">gone</item>
+    </style>
 </resources>

@@ -16,6 +16,10 @@
   --sleep: #2a8a98;
   --breath: #24786b;
   --breath-fg: #ffffff;
+  /* Jauges : énergie (ambre), humeur basse (bleu), pouls (rose framboise) */
+  --energy: #b07a00;
+  --mood-low: #4f6bb0;
+  --heart: #c2335a;
   --sky-top: #9fd0ea;
   --sky-bottom: #f6dfc6;
 
@@ -44,6 +48,9 @@
     --sleep: #6fd0dc;
     --breath: #7fd6c4;
     --breath-fg: #0c2420;
+    --energy: #f2c14e;
+    --mood-low: #9fb3e8;
+    --heart: #ff7d9c;
     --sky-top: #24415c;
     --sky-bottom: #7a5a6e;
     color-scheme: dark;
