@@ -109,9 +109,14 @@
 
   // Respiration guidée : le panneau remplace les boutons, le renard respire au même rythme.
   let breathing = $state(false);
+  /** Ouverte par l'alerte « ton pouls monte » : la séance démarre tout de suite. */
+  let breathNow = $state(false);
   let guide = $state.raw<(() => number) | null>(null);
 
-  function openBreath() {
+  function openBreath(now = false) {
+    breathNow = now;
+    checking = false;
+    preview = null;
     felt = null;
     thanks = false;
     feltMessage = null;
@@ -128,6 +133,7 @@
 
   // Boutons du widget Android : « Je le sens » et « Comment ça va ? »
   function runAction(action: AppAction) {
+    if (action === 'breathe') return openBreath(true);
     breathing = false;
     guide = null;
     window.scrollTo({ top: 0 });
@@ -198,9 +204,9 @@
   {#if checking}
     <CheckInPanel previous={journal.last} onpreview={(v) => (preview = v)} ondone={closeCheckIn} />
   {:else if breathing}
-    <BreathPanel onguide={(g) => (guide = g)} oncomplete={() => (reactSignal += 1)} onclose={closeBreath} />
+    <BreathPanel autostart={breathNow} onguide={(g) => (guide = g)} oncomplete={() => (reactSignal += 1)} onclose={closeBreath} />
   {:else if felt}
-    <FeltCard event={felt} onclose={closeFelt} onbreathe={openBreath} />
+    <FeltCard event={felt} onclose={closeFelt} onbreathe={() => openBreath()} />
   {:else}
     <button class="checkin" type="button" onclick={openCheckIn} disabled={!!journal.error}>
       <span class="checkin-title">Comment ça va ?</span>
@@ -227,7 +233,7 @@
       </p>
     </div>
 
-    <button class="breathe" type="button" onclick={openBreath}>
+    <button class="breathe" type="button" onclick={() => openBreath()}>
       <span class="breathe-icon" aria-hidden="true"></span>
       <span class="breathe-text">
         <span class="breathe-title">Respirer avec ton renard</span>

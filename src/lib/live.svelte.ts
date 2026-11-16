@@ -9,6 +9,7 @@ import { LiveWindow, rmssd } from '../sensors/metrics';
 import { hasNativeBle, nativeActive, nativeSource, stateLabel, type SensorKind } from '../sensors/native';
 import { createSimulator } from '../sensors/simulator';
 import type { Reading, SensorSource, SourceInfo } from '../sensors/types';
+import { checkPulse } from './alert.svelte';
 import { liveStoppedOutside, updateLiveHeart } from './android';
 
 export type { SensorKind };
@@ -91,6 +92,8 @@ function onReading(r: Reading) {
   else if (live.sources.find((s) => s.info.id === r.source)?.state !== 'connected') setState(r.source, 'connected');
   // Dans l'appli Android, les vrais capteurs mettent le widget à jour eux-mêmes (côté Java)
   const native = running.get(r.source)?.native ?? false;
+  // Alerte « ton pouls monte » : jamais pendant la démo ; dans l'appli Android, c'est Java qui surveille
+  if (!native && kept.hr != null && (r.source === 'ceinture' || r.source === 'bague')) checkPulse(kept.hr, r.at);
   if (!native && live.hr != null && r.at - lastWidget >= WIDGET_EVERY) {
     lastWidget = r.at;
     updateLiveHeart(live.hr, live.simulated);

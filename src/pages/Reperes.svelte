@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AlertCard from '../components/AlertCard.svelte';
   import AndroidCard from '../components/AndroidCard.svelte';
   import BackupCard from '../components/BackupCard.svelte';
 
@@ -52,6 +53,8 @@
       diagnostic et ne remplace pas un suivi par un médecin ou un psychologue.
     </p>
   </div>
+
+  <AlertCard />
 
   <BackupCard />
 

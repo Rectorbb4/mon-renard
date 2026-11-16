@@ -16,6 +16,8 @@
     type SensorKind
   } from '../lib/live.svelte';
   import { journal } from '../lib/journal.svelte';
+  import { alertConfig } from '../lib/alert.svelte';
+  import { hrefFor } from '../lib/router';
 
   const inApp = isAndroidApp();
   const sensorsOk = canUseSensors();
@@ -138,6 +140,11 @@
         La variabilité (RMSSD) se calcule avec la ceinture, sur la dernière minute. Si les deux capteurs sont branchés,
         le pouls de la ceinture, plus précis, passe en premier. {#if inApp}Appli fermée, la mesure continue pour le widget
         (une notification permet de l'arrêter).{/if}
+      </p>
+      <p class="alert-line">
+        <a href={hrefFor('reperes')}>
+          {#if alertConfig.enabled}Alerte au-dessus de {alertConfig.threshold} : activée{:else}Alerte quand le pouls monte : désactivée{/if}
+        </a>
       </p>
       {#if missing.length && sensorsOk}
         <div class="actions">
@@ -372,6 +379,14 @@
     background: color-mix(in srgb, var(--heart) 10%, var(--surface));
     font-size: 15px;
     font-weight: 700;
+  }
+
+  .alert-line a {
+    display: inline-block;
+    padding: 6px 0;
+    color: var(--heart);
+    font-weight: 700;
+    font-size: 15px;
   }
 
   .error {

@@ -15,6 +15,24 @@ interface RenardAndroid {
   /** Appli 1.2 et suivantes : pouls en direct (0 = plus de mesure). */
   setLiveHeart?(bpm: number, simulated: boolean): void;
   takeLiveStoppedOutside?(): boolean;
+  /** Appli 1.4 et suivantes : alerte quand le pouls monte (src/lib/alert.svelte.ts). */
+  setAlertConfig?(json: string): void;
+  /** « music » : une musique du téléphone ; « ringtone » : les sonneries. */
+  pickAlertSound?(kind: 'music' | 'ringtone'): void;
+  alertSoundName?(): string;
+  testAlert?(): void;
+  stopAlert?(): void;
+  snoozeAlert?(): void;
+  /** JSON : {ringing, bpm, at} de la dernière alerte. */
+  alertState?(): string;
+}
+
+export type AlertBridge = Required<Pick<RenardAndroid, 'setAlertConfig' | 'pickAlertSound' | 'alertSoundName' | 'testAlert' | 'stopAlert' | 'snoozeAlert' | 'alertState'>>;
+
+/** Le côté Android de l'alerte, ou null (navigateur, ou appli d'avant la 1.4). */
+export function alertBridge(): AlertBridge | null {
+  const b = bridge();
+  return b && typeof b.setAlertConfig === 'function' && typeof b.alertState === 'function' ? (b as AlertBridge) : null;
 }
 
 function bridge(): RenardAndroid | null {
@@ -129,13 +147,16 @@ export function pinWidget(size: 'small' | 'large'): boolean {
   }
 }
 
-export type AppAction = 'feel' | 'checkin';
+/** feel, checkin : boutons du widget ; alert : notification « ton pouls monte » ; breathe : respirer tout de suite. */
+export type AppAction = 'feel' | 'checkin' | 'alert' | 'breathe';
+const ACTIONS: AppAction[] = ['feel', 'checkin', 'alert', 'breathe'];
+const isAction = (v: unknown): v is AppAction => ACTIONS.includes(v as AppAction);
 
 /** Action demandée par un bouton du widget au lancement (« ?action=feel »), retirée de l'adresse ensuite. */
 export function takeLaunchAction(): AppAction | null {
   const url = new URL(location.href);
   const action = url.searchParams.get('action');
-  if (action !== 'feel' && action !== 'checkin') return null;
+  if (!isAction(action)) return null;
   url.searchParams.delete('action');
   history.replaceState(history.state, '', url.pathname + url.search + url.hash);
   return action;
@@ -145,7 +166,7 @@ export function takeLaunchAction(): AppAction | null {
 export function onAppAction(handler: (action: AppAction) => void): () => void {
   const listener = (e: Event) => {
     const action = (e as CustomEvent).detail;
-    if (action === 'feel' || action === 'checkin') handler(action);
+    if (isAction(action)) handler(action);
   };
   window.addEventListener('renard-action', listener);
   return () => window.removeEventListener('renard-action', listener);

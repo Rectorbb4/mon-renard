@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onAppAction, takeLaunchAction } from './lib/android';
+  import AlertOverlay from './components/AlertOverlay.svelte';
+  import { alertBridge, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
+  import { alarm, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
   import Accueil from './pages/Accueil.svelte';
@@ -7,18 +9,40 @@
 
   let route: Route = $state(parseRoute(location.hash));
 
-  // Boutons du widget Android : l'accueil traite l'action, on y retourne si besoin
-  const launchAction = takeLaunchAction();
-  if (launchAction) {
-    requestAction(launchAction);
+  // Boutons du widget Android : l'accueil traite l'action, on y retourne si besoin.
+  // « alert » (notification « ton pouls monte ») ouvre l'écran d'alerte, par-dessus tout.
+  function handleAction(action: AppAction) {
+    if (action === 'alert') return openNativeAlert();
+    requestAction(action);
     if (parseRoute(location.hash) !== 'accueil') location.hash = hrefFor('accueil');
   }
-  $effect(() =>
-    onAppAction((action) => {
-      requestAction(action);
-      if (route !== 'accueil') location.hash = hrefFor('accueil');
-    })
-  );
+
+  /** L'appli Android dit où en est la dernière alerte (sonne-t-elle encore ?). */
+  function openNativeAlert() {
+    try {
+      const s = JSON.parse(alertBridge()?.alertState() ?? 'null');
+      showNativeAlert(typeof s?.bpm === 'number' && s.bpm > 0 ? s.bpm : null, s?.ringing === true);
+    } catch {
+      showNativeAlert(null, false);
+    }
+  }
+
+  syncAlertConfig();
+  const launchAction = takeLaunchAction();
+  if (launchAction) handleAction(launchAction);
+  $effect(() => onAppAction(handleAction));
+
+  // L'appli Android sonne (ou s'arrête de sonner) pendant que la page est ouverte
+  $effect(() => {
+    const onAlert = (e: Event) => {
+      const d = (e as CustomEvent).detail ?? {};
+      // (l'essai, lui, a déjà ouvert son écran depuis la page)
+      if (d.ringing && !d.test) showNativeAlert(typeof d.bpm === 'number' ? d.bpm : null, true);
+      else alarm.ringing = false;
+    };
+    window.addEventListener('renard-alert', onAlert);
+    return () => window.removeEventListener('renard-alert', onAlert);
+  });
 
   $effect(() => {
     const onHash = () => {
@@ -60,6 +84,10 @@
     }
   ];
 </script>
+
+{#if alarm.open}
+  <AlertOverlay />
+{/if}
 
 <div class="shell">
   <main>

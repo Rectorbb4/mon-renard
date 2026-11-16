@@ -65,6 +65,10 @@ public class MainActivity extends Activity {
         BleSensors.get(this).setListener(json -> runOnUiThread(() -> {
             if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('renard-ble',{detail:" + json + "}))", null);
         }));
+        // L'alerte « ton pouls monte » prévient la page (écran d'alerte, nom du son choisi)
+        PulseAlert.get(this).setListener((name, json) -> runOnUiThread(() -> {
+            if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('" + name + "',{detail:" + json + "}))", null);
+        }));
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
@@ -104,7 +108,7 @@ public class MainActivity extends Activity {
         Uri data = intent.getData();
         if (!"monrenard".equals(data.getScheme()) || !"action".equals(data.getHost())) return null;
         String action = data.getLastPathSegment();
-        return "feel".equals(action) || "checkin".equals(action) ? action : null;
+        return "feel".equals(action) || "checkin".equals(action) || "alert".equals(action) || "breathe".equals(action) ? action : null;
     }
 
     private static boolean isOurs(Uri url) {
@@ -182,6 +186,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        PulseAlert.appVisible = true;
         // La page reprend les mesures en direct
         LiveService.stop(this);
     }
@@ -192,6 +197,7 @@ public class MainActivity extends Activity {
      */
     @Override
     protected void onPause() {
+        PulseAlert.appVisible = false;
         LiveService.startIfLive(this);
         web.onPause();
         super.onPause();
@@ -280,6 +286,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         BleSensors.get(this).setListener(null);
+        PulseAlert.get(this).setListener(null);
         web.destroy();
         super.onDestroy();
     }
@@ -291,9 +298,57 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
+    // ------------------------------------------------------------------ son de l'alerte
+
+    private static final int PICK_RINGTONE = 10;
+    private static final int PICK_MUSIC = 11;
+
+    /** Sonneries du téléphone, ou une musique (fichier audio) gardée ensuite par l'appli. */
+    @SuppressWarnings("deprecation")
+    void pickAlertSound(boolean music) {
+        Intent pick;
+        if (music) {
+            pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*");
+        } else {
+            pick = new Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+                    .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_ALARM)
+                    .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Son de l'alerte")
+                    .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                    .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                    .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                            android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM));
+            Uri current = PulseAlert.get(this).soundUri();
+            if (current != null) pick.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current);
+        }
+        try {
+            startActivityForResult(pick, music ? PICK_MUSIC : PICK_RINGTONE);
+        } catch (ActivityNotFoundException e) {
+            // Pas de sélecteur sur ce téléphone : le son par défaut reste
+        }
+    }
+
     @Override
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == PICK_RINGTONE || requestCode == PICK_MUSIC) {
+            if (resultCode != RESULT_OK || data == null) return;
+            if (requestCode == PICK_MUSIC) {
+                Uri uri = data.getData();
+                if (uri == null) return;
+                try {
+                    // La musique doit rester lisible plus tard, appli fermée
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    return;
+                }
+                PulseAlert.get(this).setSound(uri, true);
+            } else {
+                Uri uri = data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+                boolean byDefault = uri == null || uri.equals(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM));
+                PulseAlert.get(this).setSound(byDefault ? null : uri, false);
+            }
+            return;
+        }
         if (requestCode == BLE_ENABLE) {
             if (resultCode == RESULT_OK) continueSensors();
             else failPending("Le Bluetooth est éteint : active-le pour brancher tes capteurs.");

@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Alerte « ton pouls monte » : s'affiche en grand même écran éteint -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Capteurs portés (ceinture cardio, bague) en Bluetooth basse consommation -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
@@ -48,6 +50,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Affiche sur le widget le pouls mesuré en direct pendant que l'appli est en arrière-plan" />
         </service>
+
+        <!-- Boutons « Arrêter » et « Pas maintenant » de la notification d'alerte -->
+        <receiver
+            android:name=".PulseAlert$Receiver"
+            android:exported="false" />
 
         <!-- Petit widget : le renard seul -->
         <receiver

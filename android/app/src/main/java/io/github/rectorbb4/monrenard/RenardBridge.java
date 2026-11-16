@@ -71,6 +71,56 @@ public class RenardBridge {
         return BleSensors.get(activity).activeJson();
     }
 
+    // ------------------------------------------------------------------ alerte « ton pouls monte » (PulseAlert)
+
+    /** Réglages de l'alerte (seuil, plages horaires), en JSON. */
+    @JavascriptInterface
+    public void setAlertConfig(String json) {
+        activity.runOnUiThread(() -> PulseAlert.get(activity).setConfig(json));
+    }
+
+    /** Ouvre le choix du son : « music » pour une musique du téléphone, sinon les sonneries. */
+    @JavascriptInterface
+    public void pickAlertSound(String kind) {
+        activity.runOnUiThread(() -> activity.pickAlertSound("music".equals(kind)));
+    }
+
+    @JavascriptInterface
+    public String alertSoundName() {
+        return PulseAlert.get(activity).soundName();
+    }
+
+    /** Cinq secondes de sonnerie et de vibration, pour essayer. */
+    @JavascriptInterface
+    public void testAlert() {
+        activity.runOnUiThread(() -> PulseAlert.get(activity).fire(0, true));
+    }
+
+    @JavascriptInterface
+    public void stopAlert() {
+        activity.runOnUiThread(() -> PulseAlert.get(activity).stop(true));
+    }
+
+    /** « Pas maintenant » : plus d'alerte pendant une heure. */
+    @JavascriptInterface
+    public void snoozeAlert() {
+        activity.runOnUiThread(() -> PulseAlert.get(activity).snooze());
+    }
+
+    /** Version d'essai seulement : 35 secondes d'un faux pouls, comme si un capteur l'envoyait (tests automatiques). */
+    @JavascriptInterface
+    public void debugPulse(int bpm) {
+        if (!BuildConfig.DEBUG) return;
+        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        for (int i = 0; i < 35; i++) h.postDelayed(() -> PulseAlert.get(activity).onHeart(bpm, System.currentTimeMillis()), i * 1000L);
+    }
+
+    /** {ringing, bpm, at} de la dernière alerte. */
+    @JavascriptInterface
+    public String alertState() {
+        return PulseAlert.get(activity).stateJson();
+    }
+
     /** Enregistre une sauvegarde JSON dans le dossier Téléchargements. Renvoie false en cas d'échec. */
     @JavascriptInterface
     public boolean saveFile(String name, String content) {

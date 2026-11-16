@@ -175,6 +175,8 @@ final class BleSensors {
         long now = System.currentTimeMillis();
         if (BELT.equals(kind)) lastBeltHr = now;
         else if (now - lastBeltHr < PREFER_BELT_MS) return;
+        // Alerte « ton pouls monte » (seuil, plages horaires) : voir PulseAlert
+        PulseAlert.get(ctx).onHeart(bpm, now);
         if (now - lastWidget < WIDGET_EVERY) return;
         lastWidget = now;
         WidgetState.saveLive(ctx, bpm, false);

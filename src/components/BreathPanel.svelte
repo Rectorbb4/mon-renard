@@ -15,10 +15,13 @@
   } from '../lib/breathing';
 
   let {
+    autostart = false,
     onguide,
     oncomplete,
     onclose
   }: {
+    /** Démarrer sans passer par le choix de la durée (après l'alerte « ton pouls monte »). */
+    autostart?: boolean;
     /** Donne au renard le souffle à suivre, ou `null` pour lui rendre le sien. */
     onguide: (guide: (() => number) | null) => void;
     /** La séance est allée jusqu'au bout. */
@@ -66,6 +69,7 @@
   });
 
   onMount(() => {
+    if (autostart) start();
     return () => {
       cancelAnimationFrame(raf);
       onguide(null);

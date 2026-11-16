@@ -117,6 +117,21 @@ Le protocole de la bague vient de [colmi_r02_client](https://github.com/tahnok/c
 [Gadgetbridge](https://gadgetbridge.org/gadgets/rings/yawell/). Ni la ceinture ni la bague n'ont encore été
 essayées pour de vrai : le premier branchement dira s'il faut ajuster.
 
+### Alerte quand le pouls monte
+
+Dans **Repères → Alerte quand ton pouls monte** : un seuil (100 par défaut), des **plages horaires** (jours et
+heures ; une plage peut passer minuit) et un son. Si le pouls d'un vrai capteur reste au-dessus du seuil pendant
+30 secondes (80 % des mesures, pour tolérer les ratés de la bague), pendant une plage horaire, le téléphone **sonne
+et vibre fort**, puis un écran propose de respirer avec le renard (la séance démarre tout de suite). Ensuite :
+15 minutes sans nouvelle alerte ; *Pas maintenant* coupe les alertes pendant 1 heure. Jamais pendant la démo.
+
+- `src/lib/pulseAlert.ts` : la règle (seuil, durée, plages horaires), testée ; `PulseAlert.java` refait la même.
+- `src/lib/alert.svelte.ts` : réglages, écran d'alerte (`AlertOverlay.svelte`), et dans le navigateur la sonnerie
+  (carillon ou bips, synthétisés) et la vibration, seulement tant que la page est ouverte.
+- Dans l'appli Android (1.4 et plus), c'est `PulseAlert.java` qui surveille, appli fermée comprise : son au choix
+  (sonnerie ou musique du téléphone) sur le volume des **alarmes** (il passe le mode silencieux), vibration en
+  mode alarme, notification plein écran avec *Arrêter* et *Pas maintenant (1 h)*.
+
 La liste du matériel (une ceinture cardio et une bague connectée Colmi R03), la façon de les porter et l'ancienne
 piste du boîtier fait maison à imprimer en 3D sont dans [`materiel/`](materiel/README.md).
 
