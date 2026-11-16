@@ -57,6 +57,24 @@ pendant 90 jours sur AliExpress si la taille ne va pas.
 La bague garde ses mesures automatiques de la journée (pouls, sommeil) pour l'appli QRing, qu'on peut toujours
 ouvrir à côté : il suffit de débrancher la bague dans Mon renard avant.
 
+## Le bouton pause (à acheter si besoin)
+
+Contre l'impulsivité : demander une pause **sans sortir le téléphone**. Deux appuis rapides et le téléphone vibre fort
+(il sonne aussi pendant les plages horaires de l'alerte). L'instant est noté dans le journal et le renard propose de
+respirer. Ça marche appli fermée, toute la journée.
+
+- **Porte-clés Bluetooth « iTag »** (vendu comme « anti-perte », 3 à 8 €, Amazon ou AliExpress). Pile CR2032,
+  plusieurs mois. Il se glisse dans une poche ou s'accroche à un bracelet. Son bouton envoie un message Bluetooth
+  simple et connu (service FFE0), que l'appli lit directement. Ne **pas** prendre un AirTag, un Tile ni un Chipolo :
+  leur protocole est fermé.
+- **Geste de la bague**, à l'essai : la R03 a un geste « appareil photo » dans QRing. L'appli considère qu'il envoie le
+  même message que le bouton des bagues qui en ont un (paquet 0x02, d'après Gadgetbridge). C'est une supposition, à
+  vérifier avec la vraie bague. Si ça ne marche pas, *Repères → Bouton pause* affiche les messages inconnus de la bague
+  pour corriger.
+
+Dans l'appli Android : *Repères → Bouton pause → Brancher*, puis appuyer une fois sur l'iTag pour le réveiller.
+L'iTag ne doit pas être connecté à une autre appli (iSearching…).
+
 ## Ce qui n'est pas mesuré : la conductance de la peau
 
 La conductance de la peau (GSR, ou activité électrodermale) suit la transpiration invisible des doigts, que commande

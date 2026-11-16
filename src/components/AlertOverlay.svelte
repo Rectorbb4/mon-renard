@@ -24,7 +24,10 @@
       </svg>
     </div>
 
-    {#if alarm.test}
+    {#if alarm.manual}
+      <h2 id="alert-title">Stop, on fait une pause</h2>
+      <p id="alert-text">Tu as demandé une pause : c'est noté. Avant d'agir, respire deux minutes avec ton renard.</p>
+    {:else if alarm.test}
       <h2 id="alert-title">Essai de l'alerte</h2>
       <p id="alert-text">Voilà ce que tu entendras et sentiras quand ton pouls montera. Ensuite, ton renard te proposera de respirer.</p>
     {:else}
@@ -36,7 +39,7 @@
     {#if alarm.ringing}
       <button class="secondary" type="button" onclick={() => silence(false)}>Arrêter la sonnerie</button>
     {/if}
-    {#if alarm.test}
+    {#if alarm.test || alarm.manual}
       <button class="secondary" type="button" onclick={() => silence()}>Fermer</button>
     {:else}
       <button class="secondary" type="button" onclick={snoozeAlert}>Pas maintenant · pas d'alerte pendant 1 h</button>

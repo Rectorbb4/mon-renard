@@ -1,0 +1,216 @@
+<script lang="ts">
+  // Le bouton pause : contre l'impulsivité, demander une pause sans sortir le téléphone.
+  // Un porte-clés Bluetooth « iTag » qu'on presse deux fois (fiable), ou le geste de la bague (à l'essai).
+  // Tout passe par l'appli Android (BleSensors.java, PulseAlert.trigger) : ça marche appli fermée.
+  import { isAndroidApp, pauseBridge } from '../lib/android';
+  import { stateLabel } from '../sensors/native';
+
+  const inApp = isAndroidApp();
+  const b = pauseBridge();
+
+  let status = $state<string | null>(activeState());
+  let name = $state<string | null>(null);
+  let error = $state<string | null>(null);
+  let unknown = $state(readUnknown());
+
+  function activeState(): string | null {
+    try {
+      const list = JSON.parse(b?.bleActive() ?? '[]');
+      const me = Array.isArray(list) ? list.find((x) => x?.kind === 'bouton') : null;
+      return me ? String(me.state) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function readUnknown(): string[] {
+    try {
+      return (b?.bleUnknown() ?? '').split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  $effect(() => {
+    const onBle = (e: Event) => {
+      const d = (e as CustomEvent).detail ?? {};
+      if (d.kind !== 'bouton') return;
+      if (d.type === 'status') {
+        status = d.state;
+        if (d.name) name = d.name;
+      } else if (d.type === 'end') {
+        status = null;
+        error = d.message ?? null;
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      status = activeState();
+      unknown = readUnknown();
+    };
+    window.addEventListener('renard-ble', onBle);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('renard-ble', onBle);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  });
+
+  function connect() {
+    error = null;
+    try {
+      if (!b?.bleStart('bouton')) error = "Ce téléphone n'a pas de Bluetooth utilisable.";
+      else status = 'scanning';
+    } catch (e) {
+      console.error(e);
+      error = "Le bouton n'a pas pu être branché.";
+    }
+  }
+
+  function disconnect() {
+    try {
+      b?.bleStop('bouton');
+    } catch {
+      /* déjà débranché */
+    }
+    status = null;
+  }
+</script>
+
+<section class="card" aria-labelledby="pause-title">
+  <h2 id="pause-title">Bouton pause</h2>
+  <p class="soft">
+    Quand tu sens l'impulsion monter, demande une pause <strong>sans sortir ton téléphone</strong> : le téléphone vibre
+    fort (et sonne pendant tes plages horaires de l'alerte, jamais au bureau), l'instant est noté dans ton journal, et
+    ton renard te propose de respirer avant d'agir. À toute heure, même si l'alerte du pouls est désactivée.
+  </p>
+
+  {#if b}
+    <div class="row">
+      <div>
+        <p class="what">Porte-clés Bluetooth « iTag »</p>
+        <p class="hint">
+          {#if status}
+            {status === 'connected' ? 'Branché : appuie deux fois pour une pause' : stateLabel(status)}{#if name}&nbsp;· {name.trim()}{/if}
+          {:else}
+            Appuie deux fois dessus, vite, pour demander une pause.
+          {/if}
+        </p>
+      </div>
+      {#if status}
+        <button type="button" class="ghost" onclick={disconnect}>Débrancher</button>
+      {:else}
+        <button type="button" class="start" onclick={connect}>Brancher</button>
+      {/if}
+    </div>
+    {#if error}
+      <p class="error" role="alert">{error}</p>
+    {/if}
+
+    <div class="row">
+      <div>
+        <p class="what">Geste de la bague · à l'essai</p>
+        <p class="hint">
+          Quand la bague est branchée (« En direct »), le geste qui prend les photos dans QRing devrait aussi demander une
+          pause. Pas encore vérifié avec ta bague : on saura au premier essai.
+        </p>
+      </div>
+    </div>
+
+    {#if unknown.length}
+      <details>
+        <summary>Messages inconnus de la bague (pour Claude)</summary>
+        <pre>{unknown.join('\n')}</pre>
+      </details>
+    {/if}
+  {:else if inApp}
+    <p class="hint">Mets à jour l'appli (version 1.5, plus bas) pour utiliser le bouton pause.</p>
+  {:else}
+    <p class="hint">Seulement dans l'appli Android : elle seule peut rester connectée au bouton quand le téléphone est en veille.</p>
+  {/if}
+</section>
+
+<style>
+  .card {
+    display: grid;
+    gap: 12px;
+    padding: 18px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  .soft {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .soft strong {
+    color: var(--fg);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .row > div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .what {
+    font-weight: 700;
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .error {
+    color: var(--urgent);
+    font-weight: 700;
+    font-size: 15px;
+  }
+
+  button {
+    flex: none;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .start {
+    border: 1.5px solid var(--heart);
+    background: color-mix(in srgb, var(--heart) 8%, var(--surface));
+    color: var(--heart);
+  }
+
+  .ghost {
+    border: 1.5px solid var(--line);
+    background: transparent;
+    color: var(--fg);
+  }
+
+  details {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  pre {
+    margin: 6px 0 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+</style>

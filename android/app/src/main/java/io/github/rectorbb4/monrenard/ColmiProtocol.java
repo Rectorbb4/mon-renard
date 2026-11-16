@@ -23,6 +23,18 @@ final class ColmiProtocol {
     /** Mesure ponctuelle. Données : type (1 = pouls), action (1 = démarrer). */
     static final int CMD_MEASURE = 0x69;
     static final int CMD_MEASURE_STOP = 0x6a;
+    /**
+     * Paquet « bouton / geste » (0x02) : Gadgetbridge le reçoit des bagues qui ont un bouton (H59).
+     * Pour le geste « photo » de la R03, c'est une supposition : à vérifier avec la vraie bague.
+     */
+    static final int CMD_GESTURE = 0x02;
+    /** Réponses connues : 0x03 batterie, 0x73 « nouvelles données à synchroniser ». */
+    private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73};
+
+    static boolean isKnown(byte cmd) {
+        for (int k : KNOWN) if ((cmd & 0xff) == k) return true;
+        return false;
+    }
 
     /** La bague coupe le pouls en continu après 60 s sans « continuer ». */
     static final long KEEP_ALIVE_MS = 25_000;

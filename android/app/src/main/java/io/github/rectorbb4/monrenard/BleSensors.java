@@ -49,10 +49,20 @@ final class BleSensors {
 
     static final String BELT = "ceinture";
     static final String RING = "bague";
+    /** Le bouton pause : un porte-clés Bluetooth « iTag » (anti-perte), qu'on presse deux fois. */
+    static final String BUTTON = "bouton";
 
     static final UUID HR_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
     static final UUID HR_MEASUREMENT = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
     static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
+    /** iTag : service FFE0, l'appui arrive en notification sur FFE1. */
+    static final UUID ITAG_SERVICE = UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb");
+    static final UUID ITAG_PRESS = UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb");
+    /** « Perte de lien » (0x1803) : sinon l'iTag bipe dès que le téléphone s'éloigne. */
+    static final UUID LINK_LOSS = UUID.fromString("00001803-0000-1000-8000-00805f9b34fb");
+    static final UUID ALERT_LEVEL = UUID.fromString("00002a06-0000-1000-8000-00805f9b34fb");
+    /** Deux appuis à moins de 2 secondes : pas de déclenchement par erreur dans une poche. */
+    private static final long DOUBLE_PRESS_MS = 2_000;
 
     private static final long SCAN_TIMEOUT = 20_000;
     /** Si l'appareil déjà connu n'apparaît pas, on prend le premier autre trouvé au bout de ce délai. */
@@ -109,6 +119,37 @@ final class BleSensors {
         return !sensors.isEmpty();
     }
 
+    /** Le bouton pause est branché (il doit pouvoir rester connecté toute la journée). */
+    boolean hasButton() {
+        return sensors.containsKey(BUTTON);
+    }
+
+    static String label(String kind) {
+        return BELT.equals(kind) ? "ceinture" : RING.equals(kind) ? "bague" : "bouton pause";
+    }
+
+    /** Un iTag : son nom (« iTAG ») ou son service FFE0. */
+    static boolean isButton(String name, List<ParcelUuid> uuids) {
+        if (name != null && name.trim().toLowerCase(java.util.Locale.ROOT).contains("itag")) return true;
+        return uuids != null && uuids.contains(new ParcelUuid(ITAG_SERVICE));
+    }
+
+    /** Paquets de la bague que l'appli ne connaît pas encore (pour comprendre son geste au premier essai). */
+    String unknownPackets() {
+        return ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).getString("inconnus", "");
+    }
+
+    private void logUnknown(byte[] v) {
+        SharedPreferences p = ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE);
+        StringBuilder hex = new StringBuilder(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.FRANCE).format(new java.util.Date()));
+        hex.append(' ');
+        for (byte b : v) hex.append(String.format("%02x", b));
+        String[] old = p.getString("inconnus", "").split("\n");
+        StringBuilder all = new StringBuilder(hex);
+        for (int i = 0; i < Math.min(old.length, 11); i++) if (!old[i].isEmpty()) all.append('\n').append(old[i]);
+        p.edit().putString("inconnus", all.toString()).apply();
+    }
+
     String activeJson() {
         return activeJson;
     }
@@ -116,7 +157,7 @@ final class BleSensors {
     /** « ceinture et bague », pour la notification. */
     String activeLabel() {
         List<String> names = new ArrayList<>();
-        for (String k : sensors.keySet()) names.add(BELT.equals(k) ? "ceinture" : "bague");
+        for (String k : sensors.keySet()) names.add(label(k));
         return String.join(" et ", names);
     }
 
@@ -187,13 +228,14 @@ final class BleSensors {
         sensors.remove(s.kind);
         refreshActive();
         if (BELT.equals(s.kind)) lastBeltHr = 0;
-        if (sensors.isEmpty()) {
+        if (!sensors.containsKey(BELT) && !sensors.containsKey(RING) && !BUTTON.equals(s.kind)) {
+            // Plus de pouls : il disparaît du widget
             lastWidget = 0;
             WidgetState.saveLive(ctx, 0, false);
             FoxWidget.updateLive(ctx);
-            // Plus rien à mesurer en arrière-plan
-            LiveService.stop(ctx);
         }
+        // Plus rien à garder en arrière-plan
+        if (sensors.isEmpty()) LiveService.stop(ctx);
     }
 
     // ------------------------------------------------------------------ un capteur
@@ -206,7 +248,9 @@ final class BleSensors {
     private final class Sensor {
         final String kind;
         final boolean ring;
+        final boolean button;
         String state = "scanning";
+        private long lastPress;
         String name;
         private BluetoothLeScanner scanner;
         private ScanCallback scanCallback;
@@ -245,6 +289,7 @@ final class BleSensors {
         Sensor(String kind) {
             this.kind = kind;
             this.ring = RING.equals(kind);
+            this.button = BUTTON.equals(kind);
         }
 
         private SharedPreferences prefs() {
@@ -277,7 +322,7 @@ final class BleSensors {
                 return;
             }
             List<ScanFilter> filters = null;
-            if (!ring) {
+            if (!ring && !button) {
                 filters = new ArrayList<>();
                 filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(HR_SERVICE)).build());
             }
@@ -288,8 +333,9 @@ final class BleSensors {
                 public void onScanResult(int callbackType, ScanResult result) {
                     ScanRecord rec = result.getScanRecord();
                     String advName = rec != null ? rec.getDeviceName() : null;
+                    List<ParcelUuid> uuids = rec != null ? rec.getServiceUuids() : null;
                     BluetoothDevice d = result.getDevice();
-                    main.post(() -> found(d, advName));
+                    main.post(() -> found(d, advName, uuids));
                 }
 
                 @Override
@@ -307,12 +353,14 @@ final class BleSensors {
         }
 
         private void nothingFound() {
-            end(ring
+            end(button
+                    ? "Aucun bouton trouvé. Appuie une fois dessus pour le réveiller, et vérifie qu'il n'est pas connecté à une autre appli (iSearching…)."
+                    : ring
                     ? "Aucune bague trouvée. Vérifie qu'elle est chargée et que l'appli QRing est fermée (la bague ne parle qu'à une appli à la fois)."
                     : "Aucune ceinture trouvée. Vérifie qu'elle est bien mise, électrodes mouillées : elle ne s'allume qu'au contact de la peau.");
         }
 
-        private void found(BluetoothDevice d, String advName) {
+        private void found(BluetoothDevice d, String advName, List<ParcelUuid> uuids) {
             if (ended || !"scanning".equals(state)) return;
             String n = advName;
             if (n == null) {
@@ -323,6 +371,7 @@ final class BleSensors {
                 }
             }
             if (ring && !ColmiProtocol.isRing(n)) return;
+            if (button && !isButton(n, uuids)) return;
             String known = prefs().getString(kind, null);
             if (known != null && !known.equals(d.getAddress())) {
                 // Un autre appareil que celui de la dernière fois : on lui laisse un peu de temps pour apparaître
@@ -378,7 +427,9 @@ final class BleSensors {
                 main.postDelayed(connectTimeout, CONNECT_TIMEOUT);
                 openGatt(d, false);
             } else {
-                end(ring
+                end(button
+                        ? "Impossible de se connecter au bouton. Appuie dessus pour le réveiller, puis réessaie."
+                        : ring
                         ? "Impossible de se connecter à la bague. Ferme l'appli QRing si elle est ouverte, puis réessaie."
                         : "Impossible de se connecter à la ceinture. Réessaie dans un instant.");
             }
@@ -472,7 +523,7 @@ final class BleSensors {
             BluetoothDevice d = gatt != null ? gatt.getDevice() : null;
             closeGatt();
             if (d == null) {
-                end((ring ? "Bague" : "Ceinture") + " : connexion perdue.");
+                end((button ? "Bouton" : ring ? "Bague" : "Ceinture") + " : connexion perdue.");
                 return;
             }
             setState("reconnecting");
@@ -481,7 +532,19 @@ final class BleSensors {
 
         private void setup() {
             if (gatt == null) return;
-            if (ring) {
+            if (button) {
+                BluetoothGattService svc = gatt.getService(ITAG_SERVICE);
+                BluetoothGattCharacteristic press = svc != null ? svc.getCharacteristic(ITAG_PRESS) : null;
+                if (press == null) {
+                    end("Ce bouton n'est pas compatible : il faut un porte-clés Bluetooth « iTag ».");
+                    return;
+                }
+                enableNotifications(press);
+                // Pas de bip quand le téléphone s'éloigne
+                BluetoothGattService loss = gatt.getService(LINK_LOSS);
+                BluetoothGattCharacteristic level = loss != null ? loss.getCharacteristic(ALERT_LEVEL) : null;
+                if (level != null) ops.add(() -> gatt != null && writeCharacteristic(level, new byte[] {0}));
+            } else if (ring) {
                 BluetoothGattService svc = gatt.getService(ColmiProtocol.SERVICE);
                 BluetoothGattCharacteristic notify = svc != null ? svc.getCharacteristic(ColmiProtocol.NOTIFY) : null;
                 writeChar = svc != null ? svc.getCharacteristic(ColmiProtocol.WRITE) : null;
@@ -582,8 +645,23 @@ final class BleSensors {
 
         private void onValue(UUID id, byte[] v) {
             long now = System.currentTimeMillis();
-            if (ring) {
-                if (session == null || !ColmiProtocol.NOTIFY.equals(id)) return;
+            if (button) {
+                if (!ITAG_PRESS.equals(id)) return;
+                if (lastPress > 0 && now - lastPress < DOUBLE_PRESS_MS) {
+                    lastPress = 0;
+                    PulseAlert.get(ctx).trigger(BUTTON);
+                } else {
+                    lastPress = now;
+                }
+            } else if (ring) {
+                if (!ColmiProtocol.NOTIFY.equals(id) || v.length == 0) return;
+                // Geste de la bague (celui qui prend les photos dans QRing) : à l'essai, d'après Gadgetbridge
+                if ((v[0] & 0xff) == ColmiProtocol.CMD_GESTURE) {
+                    PulseAlert.get(ctx).trigger(RING);
+                    return;
+                }
+                if (!ColmiProtocol.isKnown(v[0])) logUnknown(v);
+                if (session == null) return;
                 int r = session.receive(v, now);
                 if (r > 0) reading(r, null, now);
                 else if (r == -2 && now - lastNotice > 30_000) {

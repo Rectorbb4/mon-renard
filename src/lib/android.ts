@@ -23,8 +23,23 @@ interface RenardAndroid {
   testAlert?(): void;
   stopAlert?(): void;
   snoozeAlert?(): void;
-  /** JSON : {ringing, bpm, at} de la dernière alerte. */
+  /** JSON : {ringing, bpm, at, manual} de la dernière alerte. */
   alertState?(): string;
+  /** Appli 1.5 et suivantes : instants des pauses demandées (bouton, geste de la bague), séparés par des virgules. */
+  takePendingFelt?(): string;
+  /** Paquets de la bague encore inconnus (diagnostic). */
+  bleUnknown?(): string;
+  bleStart?(kind: string): boolean;
+  bleStop?(kind: string): void;
+  bleActive?(): string;
+}
+
+/** Le bouton pause (appli 1.5 et suivantes), ou null. */
+export function pauseBridge(): Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>> | null {
+  const b = bridge();
+  return b && typeof b.takePendingFelt === 'function' && typeof b.bleStart === 'function'
+    ? (b as Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>>)
+    : null;
 }
 
 export type AlertBridge = Required<Pick<RenardAndroid, 'setAlertConfig' | 'pickAlertSound' | 'alertSoundName' | 'testAlert' | 'stopAlert' | 'snoozeAlert' | 'alertState'>>;

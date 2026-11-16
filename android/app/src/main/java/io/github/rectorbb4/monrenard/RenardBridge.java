@@ -54,7 +54,7 @@ public class RenardBridge {
      */
     @JavascriptInterface
     public boolean bleStart(String kind) {
-        if (!BleSensors.BELT.equals(kind) && !BleSensors.RING.equals(kind)) return false;
+        if (!BleSensors.BELT.equals(kind) && !BleSensors.RING.equals(kind) && !BleSensors.BUTTON.equals(kind)) return false;
         if (!BleSensors.get(activity).hasBluetooth()) return false;
         activity.runOnUiThread(() -> activity.startSensor(kind));
         return true;
@@ -113,6 +113,25 @@ public class RenardBridge {
         if (!BuildConfig.DEBUG) return;
         android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
         for (int i = 0; i < 35; i++) h.postDelayed(() -> PulseAlert.get(activity).onHeart(bpm, System.currentTimeMillis()), i * 1000L);
+    }
+
+    /** Les pauses demandées (bouton, geste) : instants à noter dans le journal, rendus une seule fois. */
+    @JavascriptInterface
+    public String takePendingFelt() {
+        return PulseAlert.get(activity).takePendingFelt();
+    }
+
+    /** Paquets de la bague encore inconnus (diagnostic du geste). */
+    @JavascriptInterface
+    public String bleUnknown() {
+        return BleSensors.get(activity).unknownPackets();
+    }
+
+    /** Version d'essai seulement : comme deux appuis sur le bouton pause (tests automatiques). */
+    @JavascriptInterface
+    public void debugTrigger() {
+        if (!BuildConfig.DEBUG) return;
+        activity.runOnUiThread(() -> PulseAlert.get(activity).trigger(BleSensors.BUTTON));
     }
 
     /** {ringing, bpm, at} de la dernière alerte. */

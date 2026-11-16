@@ -1,7 +1,7 @@
 <script lang="ts">
   import AlertOverlay from './components/AlertOverlay.svelte';
   import { alertBridge, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
-  import { alarm, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
+  import { alarm, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
   import Accueil from './pages/Accueil.svelte';
@@ -21,13 +21,20 @@
   function openNativeAlert() {
     try {
       const s = JSON.parse(alertBridge()?.alertState() ?? 'null');
-      showNativeAlert(typeof s?.bpm === 'number' && s.bpm > 0 ? s.bpm : null, s?.ringing === true);
+      showNativeAlert(typeof s?.bpm === 'number' && s.bpm > 0 ? s.bpm : null, s?.ringing === true, s?.manual === true);
     } catch {
       showNativeAlert(null, false);
     }
   }
 
   syncAlertConfig();
+  // Pauses demandées pendant que l'appli était fermée : notées dans le journal à l'ouverture
+  recordPendingPauses();
+  $effect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && recordPendingPauses();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  });
   const launchAction = takeLaunchAction();
   if (launchAction) handleAction(launchAction);
   $effect(() => onAppAction(handleAction));
@@ -37,7 +44,7 @@
     const onAlert = (e: Event) => {
       const d = (e as CustomEvent).detail ?? {};
       // (l'essai, lui, a déjà ouvert son écran depuis la page)
-      if (d.ringing && !d.test) showNativeAlert(typeof d.bpm === 'number' ? d.bpm : null, true);
+      if (d.ringing && !d.test) showNativeAlert(typeof d.bpm === 'number' && d.bpm > 0 ? d.bpm : null, true, d.manual === true);
       else alarm.ringing = false;
     };
     window.addEventListener('renard-alert', onAlert);

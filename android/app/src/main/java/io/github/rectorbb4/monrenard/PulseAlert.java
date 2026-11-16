@@ -77,6 +77,11 @@ final class PulseAlert {
     private volatile boolean ringing;
     private volatile int lastBpm;
     private volatile long lastAt;
+    /** La dernière alerte a été demandée (bouton pause, geste de la bague), pas déclenchée par le pouls. */
+    private volatile boolean manual;
+    private long lastTrigger;
+    /** Vibration seule (hors des plages horaires) : 10 secondes. */
+    private static final long VIBRATE_ONLY_MS = 10_000;
     private Listener listener;
     /** L'appli est à l'écran : la page affiche l'alerte elle-même, pas besoin de notification. */
     static volatile boolean appVisible;
@@ -185,10 +190,45 @@ final class PulseAlert {
 
     // ------------------------------------------------------------------ sonnerie
 
+    /**
+     * Pause demandée sans toucher au téléphone (deux appuis sur le bouton, geste de la bague) : à toute heure,
+     * même alerte désactivée. Vibration forte ; le son seulement pendant les plages horaires (pas au bureau).
+     * L'instant sera noté dans le journal (« je le sens ») à la prochaine ouverture de la page.
+     */
+    void trigger(String from) {
+        long now = System.currentTimeMillis();
+        if (now - lastTrigger < 5_000) return;
+        lastTrigger = now;
+        String pending = prefs.getString("pendingFelt", "");
+        prefs.edit().putString("pendingFelt", pending.isEmpty() ? String.valueOf(now) : pending + "," + now).apply();
+        boolean sound = inSlots(now);
+        stopSound();
+        ringing = true;
+        manual = true;
+        lastBpm = 0;
+        lastAt = now;
+        if (sound) playSound();
+        vibrate();
+        if (!appVisible) notifyManual();
+        emit("renard-alert", "{\"ringing\":true,\"manual\":true,\"from\":\"" + from + "\"}");
+        main.removeCallbacks(autoStop);
+        main.postDelayed(autoStop, sound ? RING_MS : VIBRATE_ONLY_MS);
+    }
+
+    /** Instants des pauses demandées, séparés par des virgules ; vidé à la lecture. */
+    String takePendingFelt() {
+        synchronized (prefs) {
+            String s = prefs.getString("pendingFelt", "");
+            if (!s.isEmpty()) prefs.edit().remove("pendingFelt").apply();
+            return s;
+        }
+    }
+
     void fire(int bpm, boolean test) {
         stopSound();
         ringing = true;
         if (!test) {
+            manual = false;
             lastBpm = bpm;
             lastAt = System.currentTimeMillis();
         }
@@ -216,7 +256,7 @@ final class PulseAlert {
     String stateJson() {
         // La dernière alerte n'est plus d'actualité au bout de 10 minutes
         boolean recent = System.currentTimeMillis() - lastAt < 10 * 60_000L;
-        return "{\"ringing\":" + ringing + ",\"bpm\":" + (recent ? lastBpm : 0) + ",\"at\":" + lastAt + "}";
+        return "{\"ringing\":" + ringing + ",\"bpm\":" + (recent ? lastBpm : 0) + ",\"at\":" + lastAt + ",\"manual\":" + (recent && manual) + "}";
     }
 
     private void playSound() {
@@ -287,6 +327,14 @@ final class PulseAlert {
     }
 
     private void notifyUser(int bpm) {
+        notify("Ton pouls monte : " + bpm, "Pause : respire avec ton renard, deux minutes.", true);
+    }
+
+    private void notifyManual() {
+        notify("Stop, on fait une pause", "Respire avec ton renard avant d'agir : deux minutes.", false);
+    }
+
+    private void notify(String title, String text, boolean withSnooze) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) return;
         if (nm.getNotificationChannel(CHANNEL) == null) {
@@ -304,14 +352,14 @@ final class PulseAlert {
         PendingIntent snoozePi = PendingIntent.getBroadcast(ctx, 22, new Intent(ctx, Receiver.class).setAction(ACTION_SNOOZE), PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = new Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notif_heart)
-                .setContentTitle("Ton pouls monte : " + bpm)
-                .setContentText("Pause : respire avec ton renard, deux minutes.")
+                .setContentTitle(title)
+                .setContentText(text)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setContentIntent(openPi)
                 .setAutoCancel(true)
-                .addAction(new Notification.Action.Builder(null, "Arrêter", stopPi).build())
-                .addAction(new Notification.Action.Builder(null, "Pas maintenant (1 h)", snoozePi).build());
+                .addAction(new Notification.Action.Builder(null, "Arrêter", stopPi).build());
+        if (withSnooze) b.addAction(new Notification.Action.Builder(null, "Pas maintenant (1 h)", snoozePi).build());
         // Écran éteint : l'alerte s'affiche en grand (si Android le permet ; sinon, notification en haut de l'écran)
         if (Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent()) b.setFullScreenIntent(openPi, true);
         try {

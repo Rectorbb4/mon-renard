@@ -94,10 +94,10 @@ async function profile(): Promise<number> {
   return journal.profileId;
 }
 
-/** « Je le sens » : note l'instant tout de suite. */
-export async function feelIt(): Promise<FeltEvent> {
-  const event = await addFeltEvent(getDB(), await profile());
-  journal.lastFelt = event;
+/** « Je le sens » : note l'instant tout de suite (ou un instant passé : pause demandée appli fermée). */
+export async function feelIt(at = Date.now()): Promise<FeltEvent> {
+  const event = await addFeltEvent(getDB(), await profile(), at);
+  if (!journal.lastFelt || event.at >= journal.lastFelt.at) journal.lastFelt = event;
   askPersistentStorage();
   return event;
 }

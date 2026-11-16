@@ -3,7 +3,8 @@
 // Dans l'appli Android, c'est l'appli qui surveille et sonne, même fermée (PulseAlert.java) ; la page
 // lui envoie les réglages et affiche l'écran d'alerte quand on l'ouvre.
 
-import { alertBridge } from './android';
+import { alertBridge, pauseBridge } from './android';
+import { feelIt } from './journal.svelte';
 import { parseAlertConfig, PulseWatch, type AlertConfig } from './pulseAlert';
 
 const KEY = 'mon-renard:alerte-pouls';
@@ -27,7 +28,9 @@ export const alarm = $state({
   /** Ça sonne en ce moment. */
   ringing: false,
   bpm: null as number | null,
-  test: false
+  test: false,
+  /** Pause demandée avec le bouton ou la bague (pas déclenchée par le pouls). */
+  manual: false
 });
 
 const watch = new PulseWatch();
@@ -64,6 +67,7 @@ export function checkPulse(hr: number, at: number): void {
 }
 
 function raise(bpm: number | null, test: boolean) {
+  alarm.manual = false;
   alarm.open = true;
   alarm.bpm = bpm;
   alarm.test = test;
@@ -82,6 +86,7 @@ export function testAlert(): void {
     }
     alarm.open = true;
     alarm.test = true;
+    alarm.manual = false;
     alarm.bpm = null;
     alarm.ringing = true;
     if (stopTimer) clearTimeout(stopTimer);
@@ -92,9 +97,11 @@ export function testAlert(): void {
 }
 
 /** L'appli Android a sonné (appli ouverte, ou ouverte depuis la notification). */
-export function showNativeAlert(bpm: number | null, ringing: boolean): void {
+export function showNativeAlert(bpm: number | null, ringing: boolean, manual = false): void {
+  recordPendingPauses();
   alarm.open = true;
   alarm.test = false;
+  alarm.manual = manual;
   alarm.bpm = bpm;
   alarm.ringing = ringing;
 }
@@ -120,6 +127,23 @@ export function snoozeAlert(): void {
     /* appli trop ancienne */
   }
   silence();
+}
+
+/**
+ * Les pauses demandées avec le bouton ou la bague sont notées dans le journal (comme « je le sens »).
+ * L'appli Android les garde de côté tant que la page n'est pas ouverte.
+ */
+export function recordPendingPauses(): void {
+  let raw = '';
+  try {
+    raw = pauseBridge()?.takePendingFelt() ?? '';
+  } catch {
+    return;
+  }
+  for (const part of raw.split(',')) {
+    const at = Number(part);
+    if (Number.isFinite(at) && at > 0) feelIt(at).catch((e) => console.error(e));
+  }
 }
 
 // ------------------------------------------------------------------ son et vibration (navigateur)
