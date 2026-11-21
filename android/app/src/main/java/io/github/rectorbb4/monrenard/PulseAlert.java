@@ -336,7 +336,7 @@ final class PulseAlert {
     }
 
     private void notifyManual() {
-        notify("Stop, on fait une pause", "Respire avec ton renard avant d'agir : deux minutes.", false);
+        notify("Stop, on fait une pause", "Ouvre pour dire comment tu te sens, ou si c'est une erreur.", false);
     }
 
     private void notify(String title, String text, boolean withSnooze) {

@@ -2,7 +2,17 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ensureProfile } from './checkins';
 import { RenardDB } from './db';
-import { NOTE_MAX, addFeltEvent, cleanNote, deleteFeltEvent, feltEventsBetween, lastFeltEvent, setFeltNote } from './events';
+import {
+  NOTE_MAX,
+  addFeltEvent,
+  cleanNote,
+  deleteFeltEvent,
+  deleteFeltEventsAt,
+  feltEventsBetween,
+  lastFeltEvent,
+  noteFeltEventsAt,
+  setFeltNote
+} from './events';
 
 let n = 0;
 let db: RenardDB;
@@ -23,6 +33,26 @@ describe('cleanNote', () => {
   it('renvoie undefined pour une note vide', () => {
     expect(cleanNote('   ')).toBeUndefined();
     expect(cleanNote(undefined)).toBeUndefined();
+  });
+});
+
+describe('pause de la bague', () => {
+  it('écrit ce qu’on ressent sur le bon moment', async () => {
+    const me = await setup();
+    await addFeltEvent(db, me, 1000);
+    await addFeltEvent(db, me, 2000);
+    await noteFeltEventsAt(db, me, 2000, 'Pause : colère');
+    const [first, second] = await feltEventsBetween(db, me, 0, 3000);
+    expect(first).not.toHaveProperty('note');
+    expect(second.note).toBe('Pause : colère');
+  });
+
+  it('retire seulement la pause lancée par erreur', async () => {
+    const me = await setup();
+    await addFeltEvent(db, me, 1000);
+    await addFeltEvent(db, me, 2000);
+    await deleteFeltEventsAt(db, me, 2000);
+    expect((await feltEventsBetween(db, me, 0, 3000)).map((e) => e.at)).toEqual([1000]);
   });
 });
 

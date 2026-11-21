@@ -16,8 +16,8 @@ android {
         minSdk 29
         targetSdk 35
         // À augmenter à chaque nouvelle version de l'APK (et public/android/version.json avec)
-        versionCode 12
-        versionName '2.1'
+        versionCode 13
+        versionName '2.2'
         buildConfigField 'String', 'START_URL', '"https://rectorbb4.github.io/mon-renard/"'
     }
 

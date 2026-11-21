@@ -1,8 +1,8 @@
 <script lang="ts">
   // Le bouton pause : contre l'impulsivité, demander une pause sans sortir le téléphone.
-  // Le geste de la bague (trois fois en 20 secondes, si l'option est activée), ou un porte-clés « iTag » pressé deux fois.
-  // Tout passe par l'appli Android (BleSensors.java, PulseAlert.trigger) : ça marche appli fermée.
-  import { isAndroidApp, pauseBridge } from '../lib/android';
+  // Trois tapotements sur la bague en 3 secondes (si l'option est activée), ou un porte-clés « iTag » pressé deux fois.
+  // Tout passe par l'appli Android (BleSensors.java, RingKeys.java, PulseAlert.trigger).
+  import { appVersion, isAndroidApp, pauseBridge } from '../lib/android';
   import { stateLabel } from '../sensors/native';
 
   const inApp = isAndroidApp();
@@ -13,7 +13,8 @@
   let error = $state<string | null>(null);
   let unknown = $state(readUnknown());
   let ringMessage = $state<string | null>(null);
-  const hasGestureOption = typeof b?.setRingGesture === 'function';
+  // Avant la 2.2, l'option suivait encore les mouvements de la main
+  const hasGestureOption = typeof b?.setRingGesture === 'function' && (appVersion()?.code ?? 0) >= 13;
   let gestureOn = $state(b?.ringGestureOn?.() ?? false);
   let gestureCount = $state(b?.ringGesturesLastHour?.() ?? 0);
 
@@ -114,16 +115,16 @@
   {#if b}
     <div class="row">
       <div>
-        <p class="what">Geste de la bague (à l'essai)</p>
+        <p class="what">Trois tapotements sur la bague</p>
         {#if !hasGestureOption}
-          <p class="hint">Mets l'appli à jour (version 1.8, plus bas) : elle empêche les pauses lancées toutes seules.</p>
+          <p class="hint">Installe la version 2.2 de l'appli (plus bas) pour lancer une pause en tapotant ta bague.</p>
         {:else if gestureOn}
           <p class="hint">
-            Activé. Fais le geste trois fois en 20 secondes : la bague clignote au deuxième, la pause part au troisième,
-            même appli fermée.
+            Activé. Tapote au moins 3 fois en 3 secondes : le téléphone vibre, sonne pendant tes plages horaires, puis te
+            demande si c'est une erreur et comment tu te sens.
           </p>
         {:else}
-          <p class="hint">Désactivé : la bague ne lance aucune pause, ses gestes sont seulement comptés.</p>
+          <p class="hint">Désactivé : tes tapotements ne lancent aucune pause.</p>
         {/if}
       </div>
       {#if hasGestureOption}
@@ -135,8 +136,8 @@
     {#if hasGestureOption}
       <div class="count">
         <p class="hint">
-          Gestes reçus depuis une heure : <strong>{gestureCount}</strong>. Si ce nombre monte sans que tu fasses le geste,
-          laisse l'option désactivée.
+          Tapotements reçus depuis une heure : <strong>{gestureCount}</strong>. S'il monte sans que tu tapotes, laisse
+          l'option désactivée.
         </p>
         <button type="button" class="ghost" onclick={pingRing}>Faire clignoter</button>
       </div>

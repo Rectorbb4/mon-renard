@@ -41,6 +41,18 @@ export function deleteFeltEvents(db: RenardDB, ids: number[]): Promise<void> {
   return db.events.bulkDelete(ids);
 }
 
+/** Retire le moment noté à cet instant (une pause lancée par erreur). */
+export async function deleteFeltEventsAt(db: RenardDB, profileId: number, at: number): Promise<void> {
+  await db.events.where('[profileId+at]').equals([profileId, at]).delete();
+}
+
+/** Écrit la note du moment noté à cet instant (ce qu'on ressent pendant une pause). */
+export async function noteFeltEventsAt(db: RenardDB, profileId: number, at: number, note: string): Promise<void> {
+  const clean = cleanNote(note);
+  if (!clean) return;
+  await db.events.where('[profileId+at]').equals([profileId, at]).modify({ note: clean });
+}
+
 export function lastFeltEvent(db: RenardDB, profileId: number): Promise<FeltEvent | undefined> {
   return db.events
     .where('[profileId+at]')

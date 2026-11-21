@@ -39,6 +39,9 @@ public class LiveService extends Service {
     private double drift;
     private long started;
     private boolean sensors;
+    /** Android plante si le service est arrêté avant d'avoir pris sa notification : l'arrêt attend ce moment. */
+    private static boolean starting;
+    private static boolean stopAfterStart;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -76,8 +79,11 @@ public class LiveService extends Service {
             if (s.liveBpm(System.currentTimeMillis()) <= 0 || !s.liveSimulated) return;
         }
         try {
+            starting = true;
+            stopAfterStart = false;
             ctx.startForegroundService(new Intent(ctx, LiveService.class));
         } catch (Exception e) {
+            starting = false;
             // Démarrage refusé par Android : le pouls disparaît du widget, comme avant
             if (withSensors) BleSensors.get(ctx).stopAll("Android n'a pas permis de continuer la mesure en arrière-plan.");
             WidgetState.saveLive(ctx, 0, false);
@@ -87,6 +93,10 @@ public class LiveService extends Service {
 
     /** L'appli revient : la page reprend la main (les capteurs, eux, restent connectés). */
     static void stop(Context ctx) {
+        if (starting) {
+            stopAfterStart = true;
+            return;
+        }
         ctx.stopService(new Intent(ctx, LiveService.class));
     }
 
@@ -118,8 +128,18 @@ public class LiveService extends Service {
             else if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(NOTIFICATION, n);
         } catch (Exception e) {
+            starting = false;
+            stopAfterStart = false;
             // Refusé (autorisation manquante…) : on s'arrête proprement
             if (sensors) BleSensors.get(this).stopAll("Android n'a pas permis de continuer la mesure en arrière-plan.");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        starting = false;
+        if (stopAfterStart) {
+            // L'appli est revenue à l'écran pendant le démarrage
+            stopAfterStart = false;
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
         }

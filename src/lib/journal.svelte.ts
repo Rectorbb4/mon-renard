@@ -11,7 +11,15 @@ import {
   sleepNotedToday
 } from '../data/checkins';
 import { getDB } from '../data/db';
-import { addFeltEvent, deleteFeltEvent, lastFeltEvent, restoreFeltEvent, setFeltNote } from '../data/events';
+import {
+  addFeltEvent,
+  deleteFeltEvent,
+  deleteFeltEventsAt,
+  lastFeltEvent,
+  noteFeltEventsAt,
+  restoreFeltEvent,
+  setFeltNote
+} from '../data/events';
 import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
 import { isAndroidApp, updateWidget } from './android';
 
@@ -104,6 +112,16 @@ export async function feelIt(at = Date.now()): Promise<FeltEvent> {
 
 export async function noteFelt(id: number, note: string): Promise<void> {
   await setFeltNote(getDB(), id, note);
+}
+
+/** Une pause lancée par erreur : elle disparaît du journal. */
+export async function cancelFeltAt(at: number): Promise<void> {
+  await deleteFeltEventsAt(getDB(), await profile(), at);
+}
+
+/** Ce qu'on ressent pendant une pause, sur le moment noté à cet instant. */
+export async function noteFeltAt(at: number, note: string): Promise<void> {
+  await noteFeltEventsAt(getDB(), await profile(), at, note);
 }
 
 /** Annule un moment noté par erreur. */

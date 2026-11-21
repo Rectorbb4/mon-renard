@@ -4,7 +4,7 @@
 // lui envoie les réglages et affiche l'écran d'alerte quand on l'ouvre.
 
 import { alertBridge, pauseBridge } from './android';
-import { feelIt } from './journal.svelte';
+import { cancelFeltAt, feelIt, noteFeltAt } from './journal.svelte';
 import { parseAlertConfig, PulseWatch, type AlertConfig } from './pulseAlert';
 
 const KEY = 'mon-renard:alerte-pouls';
@@ -30,7 +30,9 @@ export const alarm = $state({
   bpm: null as number | null,
   test: false,
   /** Pause demandée avec le bouton ou la bague (pas déclenchée par le pouls). */
-  manual: false
+  manual: false,
+  /** L'instant de cette pause : c'est lui qui la retrouve dans le journal. */
+  at: null as number | null
 });
 
 const watch = new PulseWatch();
@@ -102,8 +104,35 @@ export function showNativeAlert(bpm: number | null, ringing: boolean, manual = f
   alarm.open = true;
   alarm.test = false;
   alarm.manual = manual;
+  alarm.at = manual ? pauseInstant() : null;
   alarm.bpm = bpm;
   alarm.ringing = ringing;
+}
+
+function pauseInstant(): number | null {
+  try {
+    const at = JSON.parse(alertBridge()?.alertState() ?? 'null')?.at;
+    return typeof at === 'number' && at > 0 ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+/** « C'est une erreur » : la pause est retirée du journal. */
+export async function erasePause(): Promise<void> {
+  const at = alarm.at;
+  // Appli d'avant la 2.2 : elle ne dit pas l'instant, l'écran prévient qu'il faut corriger dans l'historique
+  if (at == null) throw new Error('Pause sans instant');
+  await recordPendingPauses();
+  await cancelFeltAt(at);
+}
+
+/** Ce qu'on ressent, écrit sur le moment de cette pause. */
+export async function notePause(note: string): Promise<void> {
+  const at = alarm.at;
+  if (at == null) throw new Error('Pause sans instant');
+  await recordPendingPauses();
+  await noteFeltAt(at, note);
 }
 
 /** Arrête la sonnerie (l'écran d'alerte reste si `close` est faux). */
@@ -133,7 +162,15 @@ export function snoozeAlert(): void {
  * Les pauses demandées avec le bouton ou la bague sont notées dans le journal (comme « je le sens »).
  * L'appli Android les garde de côté tant que la page n'est pas ouverte.
  */
-export async function recordPendingPauses(): Promise<void> {
+export function recordPendingPauses(): Promise<void> {
+  // L'une après l'autre : quand la promesse est tenue, toutes les pauses en attente sont bien écrites
+  recording = recording.then(recordNow, recordNow);
+  return recording;
+}
+
+let recording: Promise<void> = Promise.resolve();
+
+async function recordNow(): Promise<void> {
   let raw = '';
   try {
     raw = pauseBridge()?.takePendingFelt() ?? '';

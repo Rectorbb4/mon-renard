@@ -65,17 +65,9 @@ final class BleSensors {
     static final UUID ALERT_LEVEL = UUID.fromString("00002a06-0000-1000-8000-00805f9b34fb");
     /** Deux appuis à moins de 2 secondes : pas de déclenchement par erreur dans une poche. */
     private static final long DOUBLE_PRESS_MS = 2_000;
-    /**
-     * La bague prend aussi des mouvements ordinaires de la main pour des gestes : il en faut trois en
-     * 20 secondes (elle met 5 à 8 s à en reconnaître un autre), et seulement si l'option est activée.
-     */
-    private static final int GESTURE_COUNT = 3;
-    private static final long GESTURE_WINDOW = 20_000;
-    /** Après une pause, les gestes sont ignorés un moment : elle ne peut pas se relancer en boucle. */
-    private static final long GESTURE_QUIET = 2 * 60_000;
+    /** Après une pause, les tapotements sont ignorés un moment : elle ne peut pas se relancer en boucle. */
+    private static final long TAP_QUIET = 20_000;
     private static final long GESTURE_LOG = 60 * 60_000;
-    /** Le même geste reçu deux fois (touche et message) ne compte qu'une fois. */
-    private static final long GESTURE_MIN_GAP = 400;
     /** Relevé de la bague : à la connexion, puis toutes les 30 minutes. */
     private static final long SYNC_EVERY = 30 * 60_000;
     private static final long SYNC_DELAY = 2_500;
@@ -119,10 +111,10 @@ final class BleSensors {
     /** Copie lisible depuis n'importe quel fil (le pont JavaScript n'est pas sur le fil principal). */
     private volatile String activeJson = "[]";
     private volatile boolean ringReady;
-    private long lastRingGesture;
     private long gestureQuietUntil;
-    private final ArrayDeque<Long> gestures = new ArrayDeque<>();
-    /** Gestes reçus depuis une heure, pour voir si la bague en envoie sans qu'on le veuille. */
+    private final TapRule taps = new TapRule();
+    private RingKeys ringKeys;
+    /** Tapotements reçus depuis une heure, pour voir si la bague en envoie sans qu'on le veuille. */
     private final ArrayDeque<Long> gestureLog = new ArrayDeque<>();
     /** Pendant l'essai des gestes, ils sont montrés à la page et ne lancent aucune pause. */
     private volatile long ringTestUntil;
@@ -212,13 +204,34 @@ final class BleSensors {
                 touchBorrowed = true;
             }
         } else if (touchBorrowed && linked) {
-            r.write(ColmiProtocol.touchMode(savedTouchMode()));
+            r.write(ColmiProtocol.touchMode(wantedTouchMode()));
             touchBorrowed = false;
         }
     }
 
     private int savedTouchMode() {
         return ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).getInt("tactileMode", ColmiProtocol.TOUCH_CLOSED);
+    }
+
+    /** Pause par tapotements activée : le tactile reste ouvert. Sinon, le choix fait dans QRing. */
+    private int wantedTouchMode() {
+        return ringGestureOn() ? ColmiProtocol.TOUCH_KEYS : savedTouchMode();
+    }
+
+    /** Écran qui s'éteint : on redit à la bague de garder son tactile ouvert. */
+    void reapplyTouch() {
+        if (!ringGestureOn() || ringTesting()) return;
+        Sensor r = sensors.get(RING);
+        if (r != null && "connected".equals(r.state)) r.write(ColmiProtocol.touchMode(ColmiProtocol.TOUCH_KEYS));
+    }
+
+    private void syncRingKeys() {
+        boolean on = ringGestureOn() && sensors.containsKey(RING);
+        if (ringKeys == null) {
+            if (!on) return;
+            ringKeys = new RingKeys(ctx, this);
+        }
+        ringKeys.setOn(on);
     }
 
     private boolean ringTesting() {
@@ -234,17 +247,19 @@ final class BleSensors {
         // La bague confirme le réglage du tactile : noté pour le diagnostic, ce n'est pas un geste
         if ((v[0] & 0xff) == ColmiProtocol.CMD_TOUCH) {
             logLine("tactile " + hex(v));
-            // Hors essai, c'est le choix fait dans QRing : c'est lui qu'on remettra après un essai
+            // Sans essai ni pause par tapotements, c'est le choix fait dans QRing : c'est lui qu'on remettra ensuite
             int mode = ColmiProtocol.touchModeOf(v);
-            if (mode >= 0 && !ringTesting()) {
+            if (mode >= 0 && !ringTesting() && !ringGestureOn()) {
                 ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).edit().putInt("tactileMode", mode).apply();
             }
             return true;
         }
         if (ColmiProtocol.isGesture(v)) {
-            logUnknown(v);
-            if (ringTesting()) emitGesture("message", hex(v));
-            else onRingGesture(now);
+            // Ce signal part aussi sur des mouvements ordinaires : il ne lance jamais de pause
+            if (ringTesting()) {
+                logUnknown(v);
+                emitGesture("message", hex(v));
+            }
             return true;
         }
         return false;
@@ -272,7 +287,7 @@ final class BleSensors {
 
     /**
      * Le tapotement de la bague n'arrive pas par ses messages : Android la voit comme une petite télécommande
-     * et reçoit une touche média. Deux tapotements rapprochés demandent une pause. Vrai si la touche vient de la bague.
+     * et reçoit une touche média. Vrai si la touche vient de la bague.
      */
     boolean onRingKey(String device, int keyCode, boolean down, int repeat) {
         if (!ColmiProtocol.isRing(device)) return false;
@@ -280,30 +295,23 @@ final class BleSensors {
         String key = android.view.KeyEvent.keyCodeToString(keyCode);
         logLine("touche " + key);
         if (ringTesting()) emitGesture("touche", key);
-        else onRingGesture(System.currentTimeMillis());
+        else onRingTap(System.currentTimeMillis());
         return true;
     }
 
     /**
-     * Option activée : trois gestes en 20 secondes demandent une pause, la bague clignote au deuxième.
-     * Option désactivée (par défaut) : les gestes sont seulement comptés, rien ne vibre.
+     * Option activée : au moins trois tapotements en trois secondes demandent une pause.
+     * Option désactivée (par défaut) : ils sont seulement comptés, rien ne vibre.
      */
-    private void onRingGesture(long now) {
-        if (lastRingGesture > 0 && now - lastRingGesture < GESTURE_MIN_GAP) return;
-        lastRingGesture = now;
+    private void onRingTap(long now) {
         synchronized (gestureLog) {
             gestureLog.addLast(now);
             trimGestureLog(now);
         }
         if (!ringGestureOn() || now < gestureQuietUntil) return;
-        while (!gestures.isEmpty() && now - gestures.peekFirst() > GESTURE_WINDOW) gestures.removeFirst();
-        gestures.addLast(now);
-        if (gestures.size() >= GESTURE_COUNT) {
-            gestures.clear();
-            gestureQuietUntil = now + GESTURE_QUIET;
+        if (taps.add(now)) {
+            gestureQuietUntil = now + TAP_QUIET;
             PulseAlert.get(ctx).trigger(RING);
-        } else if (gestures.size() == GESTURE_COUNT - 1) {
-            blinkRing();
         }
     }
 
@@ -318,8 +326,11 @@ final class BleSensors {
 
     void setRingGestureOn(boolean on) {
         ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).edit().putBoolean("gestePause", on).apply();
-        gestures.clear();
+        taps.clear();
         gestureQuietUntil = 0;
+        Sensor r = sensors.get(RING);
+        if (r != null && "connected".equals(r.state) && !ringTesting()) r.write(ColmiProtocol.touchMode(wantedTouchMode()));
+        syncRingKeys();
     }
 
     int ringGesturesLastHour() {
@@ -486,6 +497,7 @@ final class BleSensors {
         activeJson = a.toString();
         Sensor r = sensors.get(RING);
         ringReady = r != null && "connected".equals(r.state);
+        syncRingKeys();
     }
 
     /** La bague est connectée (lisible depuis le pont JavaScript). */
@@ -1078,8 +1090,8 @@ final class BleSensors {
         private void startSession() {
             session = new ColmiProtocol.Session();
             write(ColmiProtocol.gestureOn());
-            if (touchBorrowed && !ringTesting()) {
-                write(ColmiProtocol.touchMode(savedTouchMode()));
+            if (!ringTesting() && (touchBorrowed || ringGestureOn())) {
+                write(ColmiProtocol.touchMode(wantedTouchMode()));
                 touchBorrowed = false;
             }
             sync = new RingSync(ctx, main, new RingSync.Link() {

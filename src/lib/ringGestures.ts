@@ -16,6 +16,7 @@ export const GESTURES = [
   { id: CONTROL, label: 'Ne rien faire', hint: 'Pose la main et ne bouge plus.' },
   { id: 'tap1', label: 'Un tapotement', hint: 'Tapote une fois la bague avec le pouce.' },
   { id: 'tap2', label: 'Deux tapotements', hint: 'Tapote deux fois de suite, vite.' },
+  { id: 'tap3', label: 'Trois tapotements', hint: 'Tapote trois fois en 3 secondes, à ton rythme.' },
   { id: 'glisser-bout', label: 'Glisser vers le bout du doigt', hint: 'Fais glisser le pouce sur la bague, vers ton ongle.' },
   { id: 'glisser-main', label: 'Glisser vers la main', hint: 'Fais glisser le pouce sur la bague, vers ta paume.' },
   { id: 'coup', label: 'Coup sec de la main', hint: 'Donne un petit coup sec de la main.' }

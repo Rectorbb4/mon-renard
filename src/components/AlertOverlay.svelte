@@ -1,18 +1,62 @@
 <script lang="ts">
   // Écran d'alerte « ton pouls monte » : par-dessus tout, avec un grand bouton pour respirer tout de suite.
-  import { alarm, silence, snoozeAlert } from '../lib/alert.svelte';
+  // Pause lancée par la bague : d'abord « est-ce une erreur ? », puis comment on se sent, puis la suite de la pause.
+  import { alarm, erasePause, notePause, silence, snoozeAlert } from '../lib/alert.svelte';
   import { requestAction } from '../lib/appAction.svelte';
+  import { PAUSE_FEELINGS, pauseNote, type PauseFeeling } from '../lib/pauseCheck';
   import { hrefFor, parseRoute } from '../lib/router';
 
   let primary = $state<HTMLButtonElement>();
+  let step = $state<'ask' | 'feel' | 'next'>('ask');
+  let feeling = $state<PauseFeeling | null>(null);
+  let saveError = $state(false);
+
   $effect(() => {
+    void step;
     primary?.focus();
+  });
+
+  // Une nouvelle pause repart de la première question
+  $effect(() => {
+    void alarm.at;
+    step = 'ask';
+    feeling = null;
+    saveError = false;
   });
 
   function breathe() {
     silence();
     requestAction('breathe');
     if (parseRoute(location.hash) !== 'accueil') location.hash = hrefFor('accueil');
+  }
+
+  function keepPause() {
+    silence(false);
+    step = 'feel';
+  }
+
+  async function wasMistake() {
+    silence(false);
+    saveError = false;
+    try {
+      await erasePause();
+      silence();
+    } catch (e) {
+      console.error(e);
+      saveError = true;
+    }
+  }
+
+  async function choose(f: PauseFeeling) {
+    feeling = f;
+    saveError = false;
+    step = 'next';
+    try {
+      await notePause(pauseNote(f));
+    } catch (e) {
+      console.error(e);
+      saveError = true;
+    }
   }
 </script>
 
@@ -25,28 +69,58 @@
     </div>
 
     {#if alarm.manual}
-      <h2 id="alert-title">Stop, on fait une pause</h2>
-      <p id="alert-text">
-        Ta bague ou ton bouton a lancé une pause, notée dans ton journal. Avant d'agir, respire deux minutes avec ton
-        renard. Si tu n'as rien demandé, ferme simplement.
-      </p>
-    {:else if alarm.test}
-      <h2 id="alert-title">Essai de l'alerte</h2>
-      <p id="alert-text">Voilà ce que tu entendras et sentiras quand ton pouls montera. Ensuite, ton renard te proposera de respirer.</p>
+      {#if step === 'ask'}
+        <h2 id="alert-title">Stop, on fait une pause</h2>
+        <p id="alert-text">Ta bague ou ton bouton a lancé une pause. C'est bien toi qui l'as demandée&nbsp;?</p>
+        <button class="primary" type="button" bind:this={primary} onclick={keepPause}>Oui, je continue la pause</button>
+        <button class="secondary" type="button" onclick={wasMistake}>Non, c'est une erreur</button>
+      {:else if step === 'feel'}
+        <h2 id="alert-title" class="calm">Comment tu te sens&nbsp;?</h2>
+        <p id="alert-text">Un seul choix suffit. Il sera noté avec cette pause.</p>
+        <div class="feelings">
+          {#each PAUSE_FEELINGS as f, i (f)}
+            {#if i === 0}
+              <button type="button" bind:this={primary} onclick={() => choose(f)}>{f}</button>
+            {:else}
+              <button type="button" onclick={() => choose(f)}>{f}</button>
+            {/if}
+          {/each}
+        </div>
+        <button class="link" type="button" onclick={() => (step = 'next')}>Passer</button>
+      {:else}
+        <h2 id="alert-title" class="calm">Et maintenant&nbsp;?</h2>
+        <p id="alert-text">
+          {#if feeling}{feeling === 'Je ne sais pas' ? "C'est noté, pas besoin de savoir." : `${feeling}, c'est noté.`}{/if}
+          Rien ne presse : laisse passer deux minutes avant d'agir.
+        </p>
+        <button class="primary" type="button" bind:this={primary} onclick={breathe}>Respirer avec mon renard</button>
+        <button class="secondary" type="button" onclick={() => silence()}>Terminer la pause</button>
+      {/if}
+      {#if saveError}
+        <p class="save-error" role="alert">Le journal n'a pas pu être modifié. Tu pourras corriger ce moment dans l'historique.</p>
+        {#if step === 'ask'}
+          <button class="link" type="button" onclick={() => silence()}>Fermer</button>
+        {/if}
+      {/if}
     {:else}
-      <h2 id="alert-title">Ton pouls monte{#if alarm.bpm}&nbsp;: {alarm.bpm}{/if}</h2>
-      <p id="alert-text">Pause. On respire ensemble, deux minutes : inspire 4 secondes, souffle 6 secondes.</p>
-    {/if}
+      {#if alarm.test}
+        <h2 id="alert-title">Essai de l'alerte</h2>
+        <p id="alert-text">Voilà ce que tu entendras et sentiras quand ton pouls montera. Ensuite, ton renard te proposera de respirer.</p>
+      {:else}
+        <h2 id="alert-title">Ton pouls monte{#if alarm.bpm}&nbsp;: {alarm.bpm}{/if}</h2>
+        <p id="alert-text">Pause. On respire ensemble, deux minutes : inspire 4 secondes, souffle 6 secondes.</p>
+      {/if}
 
-    <button class="primary" type="button" bind:this={primary} onclick={breathe}>Respirer avec mon renard</button>
-    {#if alarm.ringing}
-      <button class="secondary" type="button" onclick={() => silence(false)}>Arrêter la sonnerie</button>
-    {/if}
-    {#if alarm.test || alarm.manual}
-      <button class="secondary" type="button" onclick={() => silence()}>Fermer</button>
-    {:else}
-      <button class="secondary" type="button" onclick={snoozeAlert}>Pas maintenant · pas d'alerte pendant 1 h</button>
-      <button class="link" type="button" onclick={() => silence()}>Fermer</button>
+      <button class="primary" type="button" bind:this={primary} onclick={breathe}>Respirer avec mon renard</button>
+      {#if alarm.ringing}
+        <button class="secondary" type="button" onclick={() => silence(false)}>Arrêter la sonnerie</button>
+      {/if}
+      {#if alarm.test}
+        <button class="secondary" type="button" onclick={() => silence()}>Fermer</button>
+      {:else}
+        <button class="secondary" type="button" onclick={snoozeAlert}>Pas maintenant · pas d'alerte pendant 1 h</button>
+        <button class="link" type="button" onclick={() => silence()}>Fermer</button>
+      {/if}
     {/if}
   </div>
 </div>
@@ -113,8 +187,40 @@
     color: var(--heart);
   }
 
+  h2.calm {
+    color: var(--fg);
+  }
+
   p {
     color: var(--muted);
+  }
+
+  .feelings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .feelings button {
+    min-height: 52px;
+    padding: 0 10px;
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-2);
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .feelings button:last-child {
+    grid-column: 1 / -1;
+    background: transparent;
+  }
+
+  .save-error {
+    color: var(--urgent);
+    font-size: 15px;
+    font-weight: 700;
   }
 
   button {
