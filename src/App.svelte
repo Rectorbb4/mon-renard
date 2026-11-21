@@ -1,6 +1,7 @@
 <script lang="ts">
   import AlertOverlay from './components/AlertOverlay.svelte';
-  import { alertBridge, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
+  import { alertBridge, appVersion, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
+  import { rememberGestureFix } from './lib/falsePauses';
   import { alarm, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { startHealthSync } from './lib/healthSync.svelte';
@@ -29,6 +30,7 @@
   }
 
   syncAlertConfig();
+  rememberGestureFix(appVersion()?.code ?? null);
   // Relevés de la bague et de la ceinture gardés par l'appli Android
   startHealthSync();
   // Pauses demandées pendant que l'appli était fermée : notées dans le journal à l'ouverture

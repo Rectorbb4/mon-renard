@@ -1,6 +1,7 @@
 <script lang="ts">
   // Historique : courbes sur 7 ou 30 jours, puis le journal jour par jour.
   import { liveQuery } from 'dexie';
+  import FalsePausesCard from '../components/FalsePausesCard.svelte';
   import HistoryChart from '../components/HistoryChart.svelte';
   import { checkInsBetween } from '../data/checkins';
   import { getDB } from '../data/db';
@@ -129,6 +130,8 @@
       {/each}
     </div>
   </header>
+
+  <FalsePausesCard />
 
   {#if loaded && !checkins.length && !events.length}
     <div class="empty">

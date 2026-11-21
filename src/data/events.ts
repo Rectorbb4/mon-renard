@@ -36,6 +36,16 @@ export async function restoreFeltEvent(db: RenardDB, event: FeltEvent): Promise<
   await db.events.put(event);
 }
 
+/** Efface plusieurs moments d'un coup : tous ou aucun. */
+export function deleteFeltEvents(db: RenardDB, ids: number[]): Promise<void> {
+  return db.events.bulkDelete(ids);
+}
+
+/** Remet des moments effacés, avec leurs identifiants. */
+export async function restoreFeltEvents(db: RenardDB, events: FeltEvent[]): Promise<void> {
+  await db.events.bulkPut(events);
+}
+
 export function lastFeltEvent(db: RenardDB, profileId: number): Promise<FeltEvent | undefined> {
   return db.events
     .where('[profileId+at]')
