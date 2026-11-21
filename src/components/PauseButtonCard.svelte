@@ -1,6 +1,6 @@
 <script lang="ts">
   // Le bouton pause : contre l'impulsivité, demander une pause sans sortir le téléphone.
-  // Le geste de la bague (deux fois en 10 secondes), ou un porte-clés Bluetooth « iTag » pressé deux fois.
+  // Le geste de la bague (trois fois en 20 secondes, si l'option est activée), ou un porte-clés « iTag » pressé deux fois.
   // Tout passe par l'appli Android (BleSensors.java, PulseAlert.trigger) : ça marche appli fermée.
   import { isAndroidApp, pauseBridge } from '../lib/android';
   import { stateLabel } from '../sensors/native';
@@ -13,6 +13,20 @@
   let error = $state<string | null>(null);
   let unknown = $state(readUnknown());
   let ringMessage = $state<string | null>(null);
+  const hasGestureOption = typeof b?.setRingGesture === 'function';
+  let gestureOn = $state(b?.ringGestureOn?.() ?? false);
+  let gestureCount = $state(b?.ringGesturesLastHour?.() ?? 0);
+
+  function toggleGesture() {
+    gestureOn = !gestureOn;
+    b?.setRingGesture?.(gestureOn);
+  }
+
+  $effect(() => {
+    if (!hasGestureOption) return;
+    const timer = setInterval(() => (gestureCount = b?.ringGesturesLastHour?.() ?? 0), 3000);
+    return () => clearInterval(timer);
+  });
 
   function activeState(): string | null {
     try {
@@ -80,7 +94,7 @@
 
   function pingRing() {
     if (typeof b?.ringPing !== 'function') {
-      ringMessage = "Mets d'abord l'appli à jour (version 1.7, plus bas).";
+      ringMessage = "Mets d'abord l'appli à jour (version 1.8, plus bas).";
     } else if (b.ringPing()) {
       ringMessage = 'Signal envoyé : regarde si la bague clignote ou vibre.';
     } else {
@@ -101,13 +115,32 @@
     <div class="row">
       <div>
         <p class="what">Geste de la bague (à l'essai)</p>
-        <p class="hint">
-          Branche la bague dans « En direct », sur l'accueil, puis force l'arrêt de QRing. Fais le geste une fois : la
-          bague clignote. Refais-le dans les 10 secondes : la pause part, même appli fermée.
-        </p>
+        {#if !hasGestureOption}
+          <p class="hint">Mets l'appli à jour (version 1.8, plus bas) : elle empêche les pauses lancées toutes seules.</p>
+        {:else if gestureOn}
+          <p class="hint">
+            Activé. Fais le geste trois fois en 20 secondes : la bague clignote au deuxième, la pause part au troisième,
+            même appli fermée.
+          </p>
+        {:else}
+          <p class="hint">Désactivé : la bague ne lance aucune pause, ses gestes sont seulement comptés.</p>
+        {/if}
       </div>
-      <button type="button" class="ghost" onclick={pingRing}>Tester</button>
+      {#if hasGestureOption}
+        <button type="button" class={gestureOn ? 'ghost' : 'start'} role="switch" aria-checked={gestureOn} onclick={toggleGesture}>
+          {gestureOn ? 'Désactiver' : 'Activer'}
+        </button>
+      {/if}
     </div>
+    {#if hasGestureOption}
+      <div class="count">
+        <p class="hint">
+          Gestes reçus depuis une heure : <strong>{gestureCount}</strong>. Si ce nombre monte sans que tu fasses le geste,
+          laisse l'option désactivée.
+        </p>
+        <button type="button" class="ghost" onclick={pingRing}>Faire clignoter</button>
+      </div>
+    {/if}
     {#if ringMessage}
       <p class="hint" role="status">{ringMessage}</p>
     {/if}
@@ -142,7 +175,7 @@
       </details>
     {/if}
   {:else if inApp}
-    <p class="hint">Mets à jour l'appli (version 1.7, plus bas) pour utiliser le bouton pause.</p>
+    <p class="hint">Mets à jour l'appli (version 1.8, plus bas) pour utiliser le bouton pause.</p>
   {:else}
     <p class="hint">Seulement dans l'appli Android : elle seule peut rester connectée au bouton quand le téléphone est en veille.</p>
   {/if}
@@ -224,6 +257,21 @@
   details {
     font-size: 13px;
     color: var(--muted);
+  }
+
+  .count {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .count p {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .count strong {
+    color: var(--fg);
   }
 
   .itag {

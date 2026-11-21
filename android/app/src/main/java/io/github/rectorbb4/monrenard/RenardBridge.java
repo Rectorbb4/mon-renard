@@ -136,6 +136,23 @@ public class RenardBridge {
         return true;
     }
 
+    /** Le geste de la bague peut-il lancer une pause ? */
+    @JavascriptInterface
+    public boolean ringGestureOn() {
+        return BleSensors.get(activity).ringGestureOn();
+    }
+
+    @JavascriptInterface
+    public void setRingGesture(boolean on) {
+        activity.runOnUiThread(() -> BleSensors.get(activity).setRingGestureOn(on));
+    }
+
+    /** Gestes reçus de la bague depuis une heure, même option désactivée. */
+    @JavascriptInterface
+    public int ringGesturesLastHour() {
+        return BleSensors.get(activity).ringGesturesLastHour();
+    }
+
     /** Version d'essai seulement : comme deux appuis sur le bouton pause (tests automatiques). */
     @JavascriptInterface
     public void debugTrigger() {

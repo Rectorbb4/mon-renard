@@ -151,8 +151,10 @@ et vibre fort**, puis un écran propose de respirer avec le renard (la séance d
 
 ### Bouton pause
 
-Contre l'impulsivité, **Repères → Bouton pause** : deux gestes de la bague en moins de 10 secondes (activé par 02 04,
-reçu en 02 02, donc appli fermée aussi ; la bague clignote au premier) demandent une pause sans sortir le téléphone.
+Contre l'impulsivité, **Repères → Bouton pause** : si l'option est activée (elle ne l'est pas par défaut, la bague
+prenant des mouvements ordinaires pour des gestes), trois gestes en 20 secondes (activé par 02 04, reçu en 02 02, donc
+appli fermée aussi ; la bague clignote au deuxième) demandent une pause sans sortir le téléphone, puis les gestes sont
+ignorés 2 minutes. Le nombre de gestes reçus depuis une heure est affiché.
 Deux appuis sur un porte-clés Bluetooth « iTag » (service FFE0, appui notifié sur FFE1, « perte de lien » coupée pour
 qu'il ne bipe pas) font de même. Le lancement réel de la pause reste à confirmer sur la vraie bague. `PulseAlert.trigger()`
 vibre fort à toute heure et sonne seulement pendant les plages horaires. Il garde l'instant de côté

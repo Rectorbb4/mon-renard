@@ -36,6 +36,10 @@ export interface RenardAndroid {
   /** Les relevés pas encore rangés, une ligne JSON par réponse. */
   ringSyncRead?(): string;
   ringSyncAck?(chars: number): void;
+  /** Appli 1.8 et suivantes : le geste de la bague lance une pause seulement si l'option est activée. */
+  ringGestureOn?(): boolean;
+  setRingGesture?(on: boolean): void;
+  ringGesturesLastHour?(): number;
   bleStart?(kind: string): boolean;
   bleStop?(kind: string): void;
   bleActive?(): string;
@@ -43,7 +47,7 @@ export interface RenardAndroid {
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */
 type PauseBridge = Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>> &
-  Pick<RenardAndroid, 'ringPing'>;
+  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour'>;
 
 export function pauseBridge(): PauseBridge | null {
   const b = bridge();

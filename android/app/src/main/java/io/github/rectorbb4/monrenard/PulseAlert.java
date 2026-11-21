@@ -201,7 +201,8 @@ final class PulseAlert {
 
     void trigger(String from) {
         long now = System.currentTimeMillis();
-        if (now - lastTrigger < 5_000) return;
+        // Une pause en cours n'est jamais relancée : la vibration finit toujours par s'arrêter
+        if ((ringing && manual) || now - lastTrigger < 5_000) return;
         lastTrigger = now;
         String pending = prefs.getString("pendingFelt", "");
         prefs.edit().putString("pendingFelt", pending.isEmpty() ? String.valueOf(now) : pending + "," + now).apply();

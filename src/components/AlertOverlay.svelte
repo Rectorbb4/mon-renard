@@ -26,7 +26,10 @@
 
     {#if alarm.manual}
       <h2 id="alert-title">Stop, on fait une pause</h2>
-      <p id="alert-text">Tu as demandé une pause : c'est noté. Avant d'agir, respire deux minutes avec ton renard.</p>
+      <p id="alert-text">
+        Ta bague ou ton bouton a lancé une pause, notée dans ton journal. Avant d'agir, respire deux minutes avec ton
+        renard. Si tu n'as rien demandé, ferme simplement.
+      </p>
     {:else if alarm.test}
       <h2 id="alert-title">Essai de l'alerte</h2>
       <p id="alert-text">Voilà ce que tu entendras et sentiras quand ton pouls montera. Ensuite, ton renard te proposera de respirer.</p>

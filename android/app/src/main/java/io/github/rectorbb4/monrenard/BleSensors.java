@@ -63,8 +63,15 @@ final class BleSensors {
     static final UUID ALERT_LEVEL = UUID.fromString("00002a06-0000-1000-8000-00805f9b34fb");
     /** Deux appuis à moins de 2 secondes : pas de déclenchement par erreur dans une poche. */
     private static final long DOUBLE_PRESS_MS = 2_000;
-    /** Tes essais montrent 5 à 8 s entre deux gestes : la bague met un moment à en reconnaître un autre. */
-    private static final long GESTURE_WINDOW = 10_000;
+    /**
+     * La bague prend aussi des mouvements ordinaires de la main pour des gestes : il en faut trois en
+     * 20 secondes (elle met 5 à 8 s à en reconnaître un autre), et seulement si l'option est activée.
+     */
+    private static final int GESTURE_COUNT = 3;
+    private static final long GESTURE_WINDOW = 20_000;
+    /** Après une pause, les gestes sont ignorés un moment : elle ne peut pas se relancer en boucle. */
+    private static final long GESTURE_QUIET = 2 * 60_000;
+    private static final long GESTURE_LOG = 60 * 60_000;
     /** Le même geste reçu deux fois (touche et message) ne compte qu'une fois. */
     private static final long GESTURE_MIN_GAP = 400;
     /** Relevé de la bague : à la connexion, puis toutes les 30 minutes. */
@@ -103,6 +110,10 @@ final class BleSensors {
     private volatile String activeJson = "[]";
     private volatile boolean ringReady;
     private long lastRingGesture;
+    private long gestureQuietUntil;
+    private final ArrayDeque<Long> gestures = new ArrayDeque<>();
+    /** Gestes reçus depuis une heure, pour voir si la bague en envoie sans qu'on le veuille. */
+    private final ArrayDeque<Long> gestureLog = new ArrayDeque<>();
     private long beltMinute;
     private int beltSum;
     private int beltCount;
@@ -194,18 +205,47 @@ final class BleSensors {
     }
 
     /**
-     * Deux gestes en moins de 10 secondes demandent une pause. La bague clignote au premier :
-     * on sait qu'il a été compris, et un seul mouvement de la main ne déclenche rien.
+     * Option activée : trois gestes en 20 secondes demandent une pause, la bague clignote au deuxième.
+     * Option désactivée (par défaut) : les gestes sont seulement comptés, rien ne vibre.
      */
     private void onRingGesture(long now) {
-        long since = now - lastRingGesture;
-        if (lastRingGesture > 0 && since < GESTURE_MIN_GAP) return;
-        if (lastRingGesture > 0 && since < GESTURE_WINDOW) {
-            lastRingGesture = 0;
+        if (lastRingGesture > 0 && now - lastRingGesture < GESTURE_MIN_GAP) return;
+        lastRingGesture = now;
+        synchronized (gestureLog) {
+            gestureLog.addLast(now);
+            trimGestureLog(now);
+        }
+        if (!ringGestureOn() || now < gestureQuietUntil) return;
+        while (!gestures.isEmpty() && now - gestures.peekFirst() > GESTURE_WINDOW) gestures.removeFirst();
+        gestures.addLast(now);
+        if (gestures.size() >= GESTURE_COUNT) {
+            gestures.clear();
+            gestureQuietUntil = now + GESTURE_QUIET;
             PulseAlert.get(ctx).trigger(RING);
-        } else {
-            lastRingGesture = now;
+        } else if (gestures.size() == GESTURE_COUNT - 1) {
             blinkRing();
+        }
+    }
+
+    private void trimGestureLog(long now) {
+        while (!gestureLog.isEmpty() && now - gestureLog.peekFirst() > GESTURE_LOG) gestureLog.removeFirst();
+    }
+
+    /** Le geste de la bague peut-il lancer une pause ? Désactivé tant qu'on ne l'a pas choisi. */
+    boolean ringGestureOn() {
+        return ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).getBoolean("gestePause", false);
+    }
+
+    void setRingGestureOn(boolean on) {
+        ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).edit().putBoolean("gestePause", on).apply();
+        gestures.clear();
+        gestureQuietUntil = 0;
+    }
+
+    int ringGesturesLastHour() {
+        synchronized (gestureLog) {
+            trimGestureLog(System.currentTimeMillis());
+            return gestureLog.size();
         }
     }
 
