@@ -17,6 +17,10 @@ final class ColmiProtocol {
     static final UUID SERVICE = UUID.fromString("6e40fff0-b5a3-f393-e0a9-e50e24dcca9e");
     static final UUID WRITE = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
     static final UUID NOTIFY = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+    /** Second service, pour les gros relevés (sommeil, oxygène). */
+    static final UUID SERVICE_V2 = UUID.fromString("de5bf728-d711-4e47-af26-65e3012a5dc7");
+    static final UUID WRITE_V2 = UUID.fromString("de5bf72a-d711-4e47-af26-65e3012a5dc7");
+    static final UUID NOTIFY_V2 = UUID.fromString("de5bf729-d711-4e47-af26-65e3012a5dc7");
 
     /** Pouls en continu (≈ 1 valeur/s). Données : 1 = démarrer, 2 = arrêter, 3 = continuer. */
     static final int CMD_REALTIME_HR = 0x1e;
@@ -30,8 +34,11 @@ final class ColmiProtocol {
     static final int CMD_GESTURE = 0x02;
     /** Fait clignoter la bague deux fois (même source). */
     static final int CMD_BLINK = 0x10;
-    /** Réponses connues : 0x03 batterie, 0x73 « nouvelles données à synchroniser ». */
-    private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73};
+    /**
+     * Réponses connues : 0x03 batterie, 0x73 « nouvelles données », 0x9e refus de 1E 03 par ta bague,
+     * 0x01 heure, 0x10 clignotement, puis les relevés (pas, pouls, stress, variabilité).
+     */
+    private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73, 0x9e, 0x01, CMD_BLINK, 0x43, 0x15, 0x37, 0x39};
 
     static boolean isKnown(byte cmd) {
         for (int k : KNOWN) if ((cmd & 0xff) == k) return true;
@@ -40,7 +47,8 @@ final class ColmiProtocol {
 
     /** La bague coupe le pouls en continu après 60 s sans « continuer ». */
     static final long KEEP_ALIVE_MS = 25_000;
-    static final long FALLBACK_MS = 15_000;
+    /** Sans pouls depuis ce délai, on relance la mesure. */
+    static final long RESTART_MS = 10_000;
 
     /** Noms Bluetooth des bagues compatibles (repris de Gadgetbridge). */
     static final Pattern NAME = Pattern.compile("^(COLMI )?R(02|03|06|07|09|10|11C?|12)_.*");
@@ -96,35 +104,35 @@ final class ColmiProtocol {
         return bpm >= 30 && bpm <= 230 ? bpm : -1;
     }
 
-    /** Quoi envoyer à la bague, et quand (sans Bluetooth). */
+    /**
+     * Le pouls en direct, seulement quand il sert : sa LED verte vide vite une aussi petite batterie.
+     * Ta bague refuse 1E 03 (réponse 9E EE) : on suit colmi_r02_client, 69 01 01 puis 1E 33.
+     */
     static final class Session {
-        private long startedAt;
         private long lastKeepAlive;
         private long lastHrAt;
-        private boolean fallback;
+        private boolean measuring;
+
+        boolean measuring() {
+            return measuring;
+        }
 
         List<byte[]> start(long now) {
-            startedAt = now;
+            measuring = true;
             lastKeepAlive = now;
-            lastHrAt = 0;
-            fallback = false;
+            lastHrAt = now;
             List<byte[]> out = new ArrayList<>();
-            out.add(packet(CMD_REALTIME_HR, 1));
+            out.add(packet(CMD_MEASURE, 1, 1));
             return out;
         }
 
         /** Appelé chaque seconde. */
         List<byte[]> tick(long now) {
             List<byte[]> out = new ArrayList<>();
-            if (!fallback && lastHrAt == 0 && now - startedAt >= FALLBACK_MS) {
-                fallback = true;
-                out.add(packet(CMD_MEASURE, 1, 1));
-            }
-            if (now - lastKeepAlive >= KEEP_ALIVE_MS) {
-                lastKeepAlive = now;
-                out.add(packet(CMD_REALTIME_HR, 3));
-                if (fallback) out.add(packet(CMD_MEASURE, 1, 1));
-            }
+            if (!measuring || now - lastKeepAlive < KEEP_ALIVE_MS) return out;
+            lastKeepAlive = now;
+            out.add(packet(CMD_REALTIME_HR, 0x33));
+            if (now - lastHrAt > RESTART_MS) out.add(packet(CMD_MEASURE, 1, 1));
             return out;
         }
 
@@ -136,8 +144,8 @@ final class ColmiProtocol {
 
         List<byte[]> stop() {
             List<byte[]> out = new ArrayList<>();
-            out.add(packet(CMD_REALTIME_HR, 2));
-            if (fallback) out.add(packet(CMD_MEASURE_STOP, 1, 0, 0));
+            if (measuring) out.add(packet(CMD_MEASURE_STOP, 1, 0, 0));
+            measuring = false;
             return out;
         }
     }

@@ -1,13 +1,16 @@
 // Base de données locale (IndexedDB, via Dexie). Rien ne quitte le téléphone.
-// Pour ajouter une table plus tard (capteurs…), créer une version 2 sans toucher à la version 1.
+// Pour ajouter une table plus tard, créer une nouvelle version sans toucher aux précédentes.
 
-import Dexie, { type EntityTable } from 'dexie';
-import type { CheckIn, FeltEvent, Profile } from './types';
+import Dexie, { type EntityTable, type Table } from 'dexie';
+import type { CheckIn, FeltEvent, HealthMetric, HealthSample, Profile, SleepNight } from './types';
 
 export class RenardDB extends Dexie {
   profiles!: EntityTable<Profile, 'id'>;
   checkins!: EntityTable<CheckIn, 'id'>;
   events!: EntityTable<FeltEvent, 'id'>;
+  /** Mesures de la bague et de la ceinture. */
+  samples!: Table<HealthSample, [HealthMetric, number]>;
+  nights!: Table<SleepNight, number>;
 
   constructor(name = 'mon-renard') {
     super(name);
@@ -15,6 +18,10 @@ export class RenardDB extends Dexie {
       profiles: '++id',
       checkins: '++id, [profileId+at]',
       events: '++id, [profileId+at]'
+    });
+    this.version(2).stores({
+      samples: '[metric+at]',
+      nights: 'night'
     });
   }
 }

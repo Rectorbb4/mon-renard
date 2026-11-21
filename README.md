@@ -114,8 +114,25 @@ appli fermée : `LiveService.java` garde l'appli en vie avec une notification «
 le widget suit le pouls. La bague ne parle qu'à une appli à la fois : l'appli QRing doit être fermée.
 
 Le protocole de la bague vient de [colmi_r02_client](https://github.com/tahnok/colmi_r02_client) et de
-[Gadgetbridge](https://gadgetbridge.org/gadgets/rings/yawell/). Ni la ceinture ni la bague n'ont encore été
-essayées pour de vrai : le premier branchement dira s'il faut ajuster.
+[Gadgetbridge](https://gadgetbridge.org/gadgets/rings/yawell/). La connexion de la ceinture et de la bague a été
+vérifiée sur le vrai matériel ; le décodage des relevés d'historique reste à confirmer sur la vraie bague.
+
+### Suivi
+
+L'onglet **Suivi** rassemble ce que la bague garde en mémoire et ce que la ceinture mesure.
+
+- `RingSync.java` relève la bague toutes les 30 minutes tant qu'elle est connectée, appli fermée comprise : batterie,
+  pas, pouls, stress, variabilité (7 jours), oxygène et sommeil. Il garde les réponses **brutes** dans
+  `releves.jsonl`, avec une minute de ceinture par ligne : un décodage corrigé plus tard pourra les relire.
+- `src/data/ringParse.ts` les décode, `src/data/health.ts` les range sans doublons (tables Dexie `samples` et
+  `nights`), `src/lib/healthSync.svelte.ts` fait le lien avec l'appli Android.
+- `src/lib/healthDays.ts` calcule les journées, l'habitude (médiane des 28 jours précédents), les signaux à regarder
+  et les liens avec l'humeur. Toujours par rapport à soi-même, jamais un diagnostic.
+- `Terrier.svelte` dessine la journée en coupe : le ciel, la crête du pouls et l'herbe des pas au-dessus du sol, la
+  nuit creusée en galerie dessous, d'autant plus bas que le sommeil est profond.
+
+Les calories de la bague ne sont pas affichées : les sources se contredisent sur leur unité. Ce que QRing appelle
+« Pression » est un score de stress, pas la tension artérielle.
 
 ### Alerte quand le pouls monte
 
@@ -134,10 +151,10 @@ et vibre fort**, puis un écran propose de respirer avec le renard (la séance d
 
 ### Bouton pause
 
-Contre l'impulsivité, **Repères → Bouton pause** : deux appuis sur un porte-clés Bluetooth « iTag » (service FFE0,
-appui notifié sur FFE1, « perte de lien » coupée pour qu'il ne bipe pas) demandent une pause sans sortir le téléphone.
-Le tapotement de la bague (mode « Musique » de QRing, reçu comme une touche média, appli ouverte pour l'instant) et
-son geste « photo » (activé par 02 04, reçu en 02 02) font de même, à vérifier sur la vraie bague. `PulseAlert.trigger()`
+Contre l'impulsivité, **Repères → Bouton pause** : deux gestes de la bague en moins de 10 secondes (activé par 02 04,
+reçu en 02 02, donc appli fermée aussi ; la bague clignote au premier) demandent une pause sans sortir le téléphone.
+Deux appuis sur un porte-clés Bluetooth « iTag » (service FFE0, appui notifié sur FFE1, « perte de lien » coupée pour
+qu'il ne bipe pas) font de même. Le lancement réel de la pause reste à confirmer sur la vraie bague. `PulseAlert.trigger()`
 vibre fort à toute heure et sonne seulement pendant les plages horaires. Il garde l'instant de côté
 (`takePendingFelt`), noté comme « je le sens » à l'ouverture de la page. L'écran affiche « Stop, on fait une pause ».
 Tant que le bouton est branché, le service de premier plan n'a pas de limite de durée. Appli Android 1.5 et plus

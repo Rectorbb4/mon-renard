@@ -1,6 +1,6 @@
 <script lang="ts">
   // Le bouton pause : contre l'impulsivité, demander une pause sans sortir le téléphone.
-  // Un porte-clés Bluetooth « iTag » qu'on presse deux fois (fiable), ou le geste de la bague (à l'essai).
+  // Le geste de la bague (deux fois en 10 secondes), ou un porte-clés Bluetooth « iTag » pressé deux fois.
   // Tout passe par l'appli Android (BleSensors.java, PulseAlert.trigger) : ça marche appli fermée.
   import { isAndroidApp, pauseBridge } from '../lib/android';
   import { stateLabel } from '../sensors/native';
@@ -80,7 +80,7 @@
 
   function pingRing() {
     if (typeof b?.ringPing !== 'function') {
-      ringMessage = "Mets d'abord l'appli à jour (version 1.6, plus bas).";
+      ringMessage = "Mets d'abord l'appli à jour (version 1.7, plus bas).";
     } else if (b.ringPing()) {
       ringMessage = 'Signal envoyé : regarde si la bague clignote ou vibre.';
     } else {
@@ -100,31 +100,10 @@
   {#if b}
     <div class="row">
       <div>
-        <p class="what">Porte-clés Bluetooth « iTag »</p>
+        <p class="what">Geste de la bague (à l'essai)</p>
         <p class="hint">
-          {#if status}
-            {status === 'connected' ? 'Branché : appuie deux fois pour une pause' : stateLabel(status)}{#if name}&nbsp;· {name.trim()}{/if}
-          {:else}
-            Appuie deux fois dessus, vite, pour demander une pause.
-          {/if}
-        </p>
-      </div>
-      {#if status}
-        <button type="button" class="ghost" onclick={disconnect}>Débrancher</button>
-      {:else}
-        <button type="button" class="start" onclick={connect}>Brancher</button>
-      {/if}
-    </div>
-    {#if error}
-      <p class="error" role="alert">{error}</p>
-    {/if}
-
-    <div class="row">
-      <div>
-        <p class="what">Tapotement de la bague · à l'essai</p>
-        <p class="hint">
-          Dans QRing, mets « Sélection de geste » sur Musique, puis ferme QRing. Tapote deux fois la bague en moins de
-          2 secondes pour demander une pause. Pour l'instant, Mon renard doit être ouvert à l'écran.
+          Branche la bague dans « En direct », sur l'accueil, puis force l'arrêt de QRing. Fais le geste une fois : la
+          bague clignote. Refais-le dans les 10 secondes : la pause part, même appli fermée.
         </p>
       </div>
       <button type="button" class="ghost" onclick={pingRing}>Tester</button>
@@ -133,6 +112,29 @@
       <p class="hint" role="status">{ringMessage}</p>
     {/if}
 
+    <details class="itag" open={status != null}>
+      <summary>Porte-clés Bluetooth « iTag » (facultatif)</summary>
+      <div class="row">
+        <div>
+          <p class="hint">
+            {#if status}
+              {status === 'connected' ? 'Branché : appuie deux fois pour une pause' : stateLabel(status)}{#if name}&nbsp;({name.trim()}){/if}
+            {:else}
+              Appuie deux fois dessus, vite, pour demander une pause. La bague et la ceinture ne se branchent pas ici.
+            {/if}
+          </p>
+        </div>
+        {#if status}
+          <button type="button" class="ghost" onclick={disconnect}>Débrancher</button>
+        {:else}
+          <button type="button" class="start" onclick={connect}>Brancher</button>
+        {/if}
+      </div>
+      {#if error}
+        <p class="error" role="alert">{error}</p>
+      {/if}
+    </details>
+
     {#if unknown.length}
       <details>
         <summary>Messages de la bague (pour Claude)</summary>
@@ -140,7 +142,7 @@
       </details>
     {/if}
   {:else if inApp}
-    <p class="hint">Mets à jour l'appli (version 1.6, plus bas) pour utiliser le bouton pause.</p>
+    <p class="hint">Mets à jour l'appli (version 1.7, plus bas) pour utiliser le bouton pause.</p>
   {:else}
     <p class="hint">Seulement dans l'appli Android : elle seule peut rester connectée au bouton quand le téléphone est en veille.</p>
   {/if}
@@ -222,6 +224,23 @@
   details {
     font-size: 13px;
     color: var(--muted);
+  }
+
+  .itag {
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+  }
+
+  .itag summary {
+    min-height: 32px;
+    cursor: pointer;
+  }
+
+  .itag .row {
+    margin-top: 8px;
+    padding-top: 0;
+    border-top: 0;
   }
 
   pre {

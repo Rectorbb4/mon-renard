@@ -63,8 +63,15 @@ final class BleSensors {
     static final UUID ALERT_LEVEL = UUID.fromString("00002a06-0000-1000-8000-00805f9b34fb");
     /** Deux appuis à moins de 2 secondes : pas de déclenchement par erreur dans une poche. */
     private static final long DOUBLE_PRESS_MS = 2_000;
-    /** Deux gestes de la bague à moins de 3 secondes : un seul mouvement de la main ne déclenche rien. */
-    private static final long DOUBLE_GESTURE_MS = 3_000;
+    /** Tes essais montrent 5 à 8 s entre deux gestes : la bague met un moment à en reconnaître un autre. */
+    private static final long GESTURE_WINDOW = 10_000;
+    /** Le même geste reçu deux fois (touche et message) ne compte qu'une fois. */
+    private static final long GESTURE_MIN_GAP = 400;
+    /** Relevé de la bague : à la connexion, puis toutes les 30 minutes. */
+    private static final long SYNC_EVERY = 30 * 60_000;
+    private static final long SYNC_DELAY = 2_500;
+    /** La ceinture donne le pouls depuis moins de ce délai : la bague n'allume pas sa LED pour rien. */
+    private static final long BELT_ACTIVE_MS = 15_000;
 
     private static final long SCAN_TIMEOUT = 20_000;
     /** Si l'appareil déjà connu n'apparaît pas, on prend le premier autre trouvé au bout de ce délai. */
@@ -95,7 +102,11 @@ final class BleSensors {
     /** Copie lisible depuis n'importe quel fil (le pont JavaScript n'est pas sur le fil principal). */
     private volatile String activeJson = "[]";
     private volatile boolean ringReady;
-    private long lastRingKey;
+    private long lastRingGesture;
+    private long beltMinute;
+    private int beltSum;
+    private int beltCount;
+    private final List<Integer> beltRr = new ArrayList<>();
 
     private BleSensors(Context ctx) {
         this.ctx = ctx;
@@ -123,9 +134,9 @@ final class BleSensors {
         return !sensors.isEmpty();
     }
 
-    /** Le bouton pause est branché (il doit pouvoir rester connecté toute la journée). */
-    boolean hasButton() {
-        return sensors.containsKey(BUTTON);
+    /** La bague ou le bouton pause sont branchés : ils doivent pouvoir rester connectés toute la journée. */
+    boolean staysOn() {
+        return sensors.containsKey(BUTTON) || sensors.containsKey(RING);
     }
 
     static String label(String kind) {
@@ -178,14 +189,68 @@ final class BleSensors {
         if (!ColmiProtocol.isRing(device)) return false;
         if (!down || repeat != 0) return true;
         logLine("touche " + android.view.KeyEvent.keyCodeToString(keyCode));
-        long now = System.currentTimeMillis();
-        if (lastRingKey > 0 && now - lastRingKey < DOUBLE_PRESS_MS) {
-            lastRingKey = 0;
+        onRingGesture(System.currentTimeMillis());
+        return true;
+    }
+
+    /**
+     * Deux gestes en moins de 10 secondes demandent une pause. La bague clignote au premier :
+     * on sait qu'il a été compris, et un seul mouvement de la main ne déclenche rien.
+     */
+    private void onRingGesture(long now) {
+        long since = now - lastRingGesture;
+        if (lastRingGesture > 0 && since < GESTURE_MIN_GAP) return;
+        if (lastRingGesture > 0 && since < GESTURE_WINDOW) {
+            lastRingGesture = 0;
             PulseAlert.get(ctx).trigger(RING);
         } else {
-            lastRingKey = now;
+            lastRingGesture = now;
+            blinkRing();
         }
+    }
+
+    /** Relance tout de suite le relevé de la bague ; faux si elle n'est pas connectée. */
+    boolean syncRing() {
+        Sensor r = sensors.get(RING);
+        if (r == null || !"connected".equals(r.state)) return false;
+        r.startSync(System.currentTimeMillis());
         return true;
+    }
+
+    // ------------------------------------------------------------------ ceinture : une ligne par minute
+
+    private void logBelt(int bpm, List<Integer> rr, long now) {
+        long minute = now - now % 60_000;
+        if (beltMinute != 0 && minute != beltMinute) flushBelt();
+        beltMinute = minute;
+        beltSum += bpm;
+        beltCount++;
+        if (rr != null) beltRr.addAll(rr);
+    }
+
+    private void flushBelt() {
+        // Moins de 20 mesures dans la minute : pas assez pour en tirer quelque chose
+        if (beltCount >= 20) RingSync.appendBelt(ctx, beltMinute, Math.round((float) beltSum / beltCount), rmssd(beltRr));
+        beltMinute = 0;
+        beltSum = 0;
+        beltCount = 0;
+        beltRr.clear();
+    }
+
+    /** Même calcul que src/sensors/metrics.ts. */
+    private static Double rmssd(List<Integer> rr) {
+        List<Integer> clean = new ArrayList<>();
+        for (int v : rr) if (v >= 300 && v <= 2000) clean.add(v);
+        if (clean.size() < 3) return null;
+        double sum = 0;
+        int n = 0;
+        for (int i = 1; i < clean.size(); i++) {
+            int d = clean.get(i) - clean.get(i - 1);
+            if (Math.abs(d) > clean.get(i - 1) * 0.25) continue;
+            sum += d * d;
+            n++;
+        }
+        return n < 2 ? null : Math.round(Math.sqrt(sum / n) * 10) / 10.0;
     }
 
     String activeJson() {
@@ -278,7 +343,10 @@ final class BleSensors {
     private void removed(Sensor s) {
         sensors.remove(s.kind);
         refreshActive();
-        if (BELT.equals(s.kind)) lastBeltHr = 0;
+        if (BELT.equals(s.kind)) {
+            lastBeltHr = 0;
+            flushBelt();
+        }
         if (!sensors.containsKey(BELT) && !sensors.containsKey(RING) && !BUTTON.equals(s.kind)) {
             // Plus de pouls : il disparaît du widget
             lastWidget = 0;
@@ -309,6 +377,9 @@ final class BleSensors {
         private String candidateName;
         private BluetoothGatt gatt;
         private BluetoothGattCharacteristic writeChar;
+        private BluetoothGattCharacteristic writeV2;
+        private RingSync sync;
+        private long lastSync;
         private boolean ended;
         private boolean everConnected;
         private int attempts;
@@ -335,7 +406,12 @@ final class BleSensors {
             @Override
             public void run() {
                 if (session == null || ended) return;
-                for (byte[] p : session.tick(System.currentTimeMillis())) write(p);
+                long now = System.currentTimeMillis();
+                // Le pouls en direct sert si la ceinture n'en donne pas, et si quelqu'un le regarde ou l'alerte l'attend
+                boolean want = now - lastBeltHr >= BELT_ACTIVE_MS && (PulseAlert.appVisible || PulseAlert.get(ctx).isEnabled());
+                if (want != session.measuring()) for (byte[] p : want ? session.start(now) : session.stop()) write(p);
+                for (byte[] p : session.tick(now)) write(p);
+                if (now - lastSync >= SYNC_EVERY) startSync(now);
                 main.postDelayed(this, 1000);
             }
         };
@@ -675,6 +751,11 @@ final class BleSensors {
                     return;
                 }
                 enableNotifications(notify);
+                BluetoothGattService v2 = gatt.getService(ColmiProtocol.SERVICE_V2);
+                BluetoothGattCharacteristic notifyV2 = v2 != null ? v2.getCharacteristic(ColmiProtocol.NOTIFY_V2) : null;
+                writeV2 = v2 != null ? v2.getCharacteristic(ColmiProtocol.WRITE_V2) : null;
+                if (notifyV2 != null) enableNotifications(notifyV2);
+                else writeV2 = null;
                 ops.add(() -> {
                     startSession();
                     return false;
@@ -759,14 +840,45 @@ final class BleSensors {
 
         private void startSession() {
             session = new ColmiProtocol.Session();
-            for (byte[] p : session.start(System.currentTimeMillis())) write(p);
             write(ColmiProtocol.gestureOn());
+            sync = new RingSync(ctx, main, new RingSync.Link() {
+                @Override
+                public void sendV1(byte[] packet) {
+                    write(packet);
+                }
+
+                @Override
+                public void sendV2(byte[] packet) {
+                    ops.add(() -> gatt != null && writeV2 != null && writeCharacteristic(writeV2, packet));
+                    pump();
+                }
+
+                @Override
+                public boolean hasV2() {
+                    return writeV2 != null;
+                }
+
+                @Override
+                public void progress(String state, int done, int total) {
+                    emit(event(kind, "sync").putOpt("state", state).putOpt("done", done).putOpt("total", total));
+                }
+            });
+            // Premier relevé juste après la connexion
+            lastSync = System.currentTimeMillis() - SYNC_EVERY + SYNC_DELAY;
             main.removeCallbacks(tick);
             main.postDelayed(tick, 1000);
         }
 
+        void startSync(long now) {
+            if (sync == null || sync.running()) return;
+            lastSync = now;
+            sync.start(now);
+        }
+
         private void stopSession() {
             main.removeCallbacks(tick);
+            if (sync != null) sync.stop();
+            sync = null;
             session = null;
         }
 
@@ -781,18 +893,19 @@ final class BleSensors {
                     lastPress = now;
                 }
             } else if (ring) {
-                if (!ColmiProtocol.NOTIFY.equals(id) || v.length == 0) return;
-                // Geste de la bague (celui qui prend les photos dans QRing) : deux de suite pour une pause
-                if (ColmiProtocol.isGesture(v)) {
-                    logUnknown(v);
-                    if (lastPress > 0 && now - lastPress < DOUBLE_GESTURE_MS) {
-                        lastPress = 0;
-                        PulseAlert.get(ctx).trigger(RING);
-                    } else {
-                        lastPress = now;
-                    }
+                if (v.length == 0) return;
+                if (ColmiProtocol.NOTIFY_V2.equals(id)) {
+                    if (sync != null) sync.onV2(v);
                     return;
                 }
+                if (!ColmiProtocol.NOTIFY.equals(id)) return;
+                // Geste de la bague (celui qui prend les photos dans QRing) : marche aussi appli fermée
+                if (ColmiProtocol.isGesture(v)) {
+                    logUnknown(v);
+                    onRingGesture(now);
+                    return;
+                }
+                if (sync != null && sync.onV1(v)) return;
                 if (!ColmiProtocol.isKnown(v[0])) logUnknown(v);
                 if (session == null) return;
                 int r = session.receive(v, now);
@@ -806,6 +919,7 @@ final class BleSensors {
                 // Pas de contact avec la peau : la valeur ne veut rien dire
                 if (hr == null || Boolean.FALSE.equals(hr.contact) || hr.bpm == 0) return;
                 reading(hr.bpm, hr.rr, now);
+                logBelt(hr.bpm, hr.rr, now);
             }
         }
 
@@ -826,6 +940,8 @@ final class BleSensors {
             main.removeCallbacks(connectTimeout);
             main.removeCallbacks(opTimeout);
             main.removeCallbacks(tick);
+            if (sync != null) sync.stop();
+            sync = null;
             ops.clear();
             busy = false;
             BluetoothGatt g = gatt;

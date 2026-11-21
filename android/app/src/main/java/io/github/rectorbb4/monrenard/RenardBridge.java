@@ -143,6 +143,33 @@ public class RenardBridge {
         activity.runOnUiThread(() -> PulseAlert.get(activity).trigger(BleSensors.BUTTON));
     }
 
+    /** Relance le relevé de la bague ; faux si elle n'est pas connectée. */
+    @JavascriptInterface
+    public boolean ringSync() {
+        BleSensors ble = BleSensors.get(activity);
+        if (!ble.ringReady()) return false;
+        activity.runOnUiThread(ble::syncRing);
+        return true;
+    }
+
+    /** Les relevés pas encore rangés dans la base de la page (une ligne JSON par réponse). */
+    @JavascriptInterface
+    public String ringSyncRead() {
+        return RingSync.read(activity);
+    }
+
+    /** La page a rangé les `chars` premiers caractères. */
+    @JavascriptInterface
+    public void ringSyncAck(int chars) {
+        RingSync.ack(activity, chars);
+    }
+
+    /** Version d'essai seulement : une ligne de relevé, comme si elle venait de la bague. */
+    @JavascriptInterface
+    public void debugBelt(long minute, int hr) {
+        if (BuildConfig.DEBUG) RingSync.appendBelt(activity, minute, hr, 42.0);
+    }
+
     /** Version d'essai seulement : un tapotement de la bague (touche média). */
     @JavascriptInterface
     public void debugRingKey(int keyCode) {

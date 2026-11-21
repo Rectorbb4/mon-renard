@@ -4,7 +4,7 @@
 import type { CheckIn, FeltEvent } from '../data/types';
 import { MOODS, moodFromScore } from '../fox/moods';
 
-interface RenardAndroid {
+export interface RenardAndroid {
   setWidgetState(json: string): void;
   saveFile(name: string, content: string): boolean;
   keepScreenOn(on: boolean): void;
@@ -31,6 +31,11 @@ interface RenardAndroid {
   bleUnknown?(): string;
   /** Appli 1.6 et suivantes : fait réagir la bague ; faux si elle n'est pas connectée. */
   ringPing?(): boolean;
+  /** Appli 1.7 et suivantes : relève la bague ; faux si elle n'est pas connectée. */
+  ringSync?(): boolean;
+  /** Les relevés pas encore rangés, une ligne JSON par réponse. */
+  ringSyncRead?(): string;
+  ringSyncAck?(chars: number): void;
   bleStart?(kind: string): boolean;
   bleStop?(kind: string): void;
   bleActive?(): string;

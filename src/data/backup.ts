@@ -5,7 +5,7 @@ import { Dexie } from 'dexie';
 import { WORD_MAX, ensureProfile, normalizeCheckIn } from './checkins';
 import type { RenardDB } from './db';
 import { cleanNote } from './events';
-import type { CheckIn, FeltEvent, Profile } from './types';
+import { HEALTH_METRICS, type CheckIn, type FeltEvent, type HealthMetric, type HealthSample, type Profile, type SleepNight, type SleepStage } from './types';
 
 export const BACKUP_APP = 'mon-renard';
 export const BACKUP_FORMAT = 1;
@@ -29,25 +29,51 @@ export interface Backup {
   profiles: BackupProfile[];
   checkins: Omit<CheckIn, 'id'>[];
   events: Omit<FeltEvent, 'id'>[];
+  /** Mesures des capteurs, si l'appli en a. Les versions plus anciennes l'ignorent simplement. */
+  health?: BackupHealth;
+}
+
+/** Une mesure en liste courte, pour que des mois de pouls restent un petit fichier. */
+export type BackupSample = [HealthMetric, number, number] | [HealthMetric, number, number, number, number];
+
+export interface BackupHealth {
+  samples: BackupSample[];
+  nights: SleepNight[];
+}
+
+const toBackupSample = (s: HealthSample): BackupSample =>
+  s.min != null && s.max != null ? [s.metric, s.at, s.value, s.min, s.max] : [s.metric, s.at, s.value];
+
+function fromBackupSample(s: BackupSample): HealthSample {
+  const out: HealthSample = { metric: s[0], at: s[1], value: s[2] };
+  if (s.length === 5) {
+    out.min = s[3];
+    out.max = s[4];
+  }
+  return out;
 }
 
 /** Message lisible par l'utilisateur quand un fichier ne peut pas être importé. */
 export class BackupError extends Error {}
 
 export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: string): Promise<Backup> {
-  return db.transaction('r', db.profiles, db.checkins, db.events, async () => {
+  return db.transaction('r', [db.profiles, db.checkins, db.events, db.samples, db.nights], async () => {
     const profiles = (await db.profiles.toArray()).map(({ id, name, kind, createdAt }) => ({ id: id!, name, kind, createdAt }));
     const byTime = <T extends { at: number }>(a: T, b: T) => a.at - b.at;
     const checkins = (await db.checkins.toArray()).map(({ id: _id, ...c }) => c).sort(byTime);
     const events = (await db.events.toArray()).map(({ id: _id, ...e }) => e).sort(byTime);
     const backup: Backup = { app: BACKUP_APP, format: BACKUP_FORMAT, exportedAt: now, profiles, checkins, events };
     if (appVersion) backup.appVersion = appVersion;
+    const samples = await db.samples.toArray();
+    const nights = await db.nights.toArray();
+    if (samples.length || nights.length) backup.health = { samples: samples.map(toBackupSample), nights };
     return backup;
   });
 }
 
 export function backupToJson(backup: Backup): string {
-  return JSON.stringify(backup, null, 1);
+  // Avec les mesures, sans mise en forme : le fichier resterait sinon plusieurs fois plus gros
+  return backup.health ? JSON.stringify(backup) : JSON.stringify(backup, null, 1);
 }
 
 /** « mon-renard-sauvegarde-2026-11-15.json » (date locale). */
@@ -64,6 +90,36 @@ export interface ParsedBackup {
   backup: Backup;
   /** Lignes illisibles, laissées de côté. */
   invalid: number;
+}
+
+const METRICS = new Set<string>(HEALTH_METRICS);
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+function parseHealth(raw: unknown): { health?: BackupHealth; invalid: number } {
+  if (!isObject(raw)) return { invalid: 0 };
+  let invalid = 0;
+  const samples: BackupSample[] = [];
+  for (const s of Array.isArray(raw.samples) ? raw.samples : []) {
+    if (!Array.isArray(s) || !METRICS.has(s[0]) || !isTime(s[1]) || !isNum(s[2])) {
+      invalid++;
+    } else if (isNum(s[3]) && isNum(s[4])) {
+      samples.push([s[0], s[1], s[2], s[3], s[4]]);
+    } else {
+      samples.push([s[0], s[1], s[2]]);
+    }
+  }
+  const nights: SleepNight[] = [];
+  for (const n of Array.isArray(raw.nights) ? raw.nights : []) {
+    const stages = isObject(n) && Array.isArray(n.stages)
+      ? n.stages.filter((x): x is [SleepStage, number] => Array.isArray(x) && [2, 3, 4, 5].includes(x[0]) && isNum(x[1]) && x[1] > 0)
+      : [];
+    if (!isObject(n) || !isTime(n.night) || !isTime(n.start) || !isTime(n.end) || n.end <= n.start || !stages.length) {
+      invalid++;
+      continue;
+    }
+    nights.push({ night: n.night, start: n.start, end: n.end, stages: stages.map(([s, m]) => [s, m]) });
+  }
+  return samples.length || nights.length ? { health: { samples, nights }, invalid } : { invalid };
 }
 
 /** Lit et vérifie le contenu d'un fichier. Lève une BackupError avec un message clair si ce n'est pas utilisable. */
@@ -132,22 +188,24 @@ export function parseBackup(text: string): ParsedBackup {
     events.push(event);
   }
 
-  if (!checkins.length && !events.length) {
+  const parsedHealth = parseHealth(raw.health);
+  invalid += parsedHealth.invalid;
+
+  if (!checkins.length && !events.length && !parsedHealth.health) {
     throw new BackupError(invalid ? 'Cette sauvegarde est abîmée : aucune ligne du journal ne peut être lue.' : 'Cette sauvegarde est vide.');
   }
 
-  return {
-    backup: {
-      app: BACKUP_APP,
-      format: raw.format,
-      exportedAt: isTime(raw.exportedAt) ? raw.exportedAt : 0,
-      appVersion: typeof raw.appVersion === 'string' ? raw.appVersion.slice(0, 20) : undefined,
-      profiles,
-      checkins,
-      events
-    },
-    invalid
+  const backup: Backup = {
+    app: BACKUP_APP,
+    format: raw.format,
+    exportedAt: isTime(raw.exportedAt) ? raw.exportedAt : 0,
+    appVersion: typeof raw.appVersion === 'string' ? raw.appVersion.slice(0, 20) : undefined,
+    profiles,
+    checkins,
+    events
   };
+  if (parsedHealth.health) backup.health = parsedHealth.health;
+  return { backup, invalid };
 }
 
 export interface BackupSummary {
@@ -156,16 +214,24 @@ export interface BackupSummary {
   /** Premier et dernier instant du journal. */
   from: number;
   to: number;
+  /** Mesures des capteurs et nuits, s'il y en a. */
+  measures?: number;
 }
 
 export function summarizeBackup(backup: Backup): BackupSummary {
-  const times = [...backup.checkins, ...backup.events].map((x) => x.at);
-  return {
-    checkins: backup.checkins.length,
-    events: backup.events.length,
-    from: Math.min(...times),
-    to: Math.max(...times)
+  let from = Infinity;
+  let to = -Infinity;
+  const see = (at: number) => {
+    if (at < from) from = at;
+    if (at > to) to = at;
   };
+  for (const x of backup.checkins) see(x.at);
+  for (const x of backup.events) see(x.at);
+  for (const s of backup.health?.samples ?? []) see(s[1]);
+  for (const n of backup.health?.nights ?? []) see(n.end);
+  const summary: BackupSummary = { checkins: backup.checkins.length, events: backup.events.length, from, to };
+  if (backup.health) summary.measures = backup.health.samples.length + backup.health.nights.length;
+  return summary;
 }
 
 export interface ImportResult {
@@ -173,11 +239,13 @@ export interface ImportResult {
   events: number;
   /** Déjà présents sur le téléphone (même profil, même instant). */
   already: number;
+  /** Mesures et nuits ajoutées. */
+  measures?: number;
 }
 
 /** Ajoute le contenu de la sauvegarde au journal du téléphone, sans doublons et sans rien effacer. */
 export async function importBackup(db: RenardDB, backup: Backup): Promise<ImportResult> {
-  return db.transaction('rw', db.profiles, db.checkins, db.events, async () => {
+  return db.transaction('rw', [db.profiles, db.checkins, db.events, db.samples, db.nights], async () => {
     // Chaque profil de la sauvegarde retrouve son profil sur le téléphone (même nom, même type).
     // Une sauvegarde à un seul profil va dans le profil principal, comme avant le changement de téléphone.
     const local = await db.profiles.toArray();
@@ -238,6 +306,18 @@ export async function importBackup(db: RenardDB, backup: Backup): Promise<Import
       }
       await db.events.bulkAdd(newEvents);
       result.events += newEvents.length;
+    }
+
+    if (backup.health) {
+      // Ce qui est déjà sur le téléphone n'est pas remplacé
+      const haveSamples = new Set((await db.samples.toCollection().primaryKeys()).map(([m, at]) => `${m}:${at}`));
+      const newSamples = backup.health.samples.filter((s) => !haveSamples.has(`${s[0]}:${s[1]}`)).map(fromBackupSample);
+      const haveNights = new Set(await db.nights.toCollection().primaryKeys());
+      const newNights = backup.health.nights.filter((n) => !haveNights.has(n.night));
+      await db.samples.bulkPut(newSamples);
+      await db.nights.bulkPut(newNights);
+      result.measures = newSamples.length + newNights.length;
+      result.already += backup.health.samples.length + backup.health.nights.length - result.measures;
     }
     return result;
   });

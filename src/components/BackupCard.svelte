@@ -108,14 +108,18 @@
     try {
       await startJournal();
       const r = await importBackup(getDB(), pending.backup);
-      const added = [r.checkins && plural(r.checkins, 'check-in', 'check-ins'), r.events && plural(r.events, 'moment', 'moments')]
+      const added = [
+        r.checkins && plural(r.checkins, 'check-in', 'check-ins'),
+        r.events && plural(r.events, 'moment', 'moments'),
+        r.measures && plural(r.measures, 'mesure', 'mesures')
+      ]
         .filter(Boolean)
         .join(' et ');
       const already = r.already ? ` ${plural(r.already, 'élément était', 'éléments étaient')} déjà sur ce téléphone.` : '';
       message = {
         kind: 'ok',
         text: added
-          ? `C'est fait : ${added} ${r.checkins + r.events > 1 ? 'ajoutés' : 'ajouté'}.${already}`
+          ? `C'est fait : ${added} ${r.checkins + r.events + (r.measures ?? 0) > 1 ? 'ajoutés' : 'ajouté'}.${already}`
           : `Rien à ajouter : tout était déjà sur ce téléphone.`
       };
       pending = null;
@@ -163,7 +167,7 @@
     <div class="confirm" role="group" aria-labelledby="confirm-title">
       <p id="confirm-title" class="confirm-title">Restaurer « {pending.name} » ?</p>
       <p>
-        {plural(pending.summary.checkins, 'check-in', 'check-ins')} et {plural(pending.summary.events, 'moment', 'moments')},
+        {plural(pending.summary.checkins, 'check-in', 'check-ins')} et {plural(pending.summary.events, 'moment', 'moments')}{#if pending.summary.measures}, {plural(pending.summary.measures, 'mesure', 'mesures')} des capteurs{/if},
         {period(pending.summary)}.
       </p>
       {#if pending.invalid}

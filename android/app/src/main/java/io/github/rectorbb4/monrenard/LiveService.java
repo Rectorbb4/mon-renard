@@ -44,9 +44,9 @@ public class LiveService extends Service {
         @Override
         public void run() {
             long now = System.currentTimeMillis();
-            // Le bouton pause doit rester disponible toute la journée : pas de limite tant qu'il est branché
-            boolean button = sensors && BleSensors.get(LiveService.this).hasButton();
-            if (!button && now - started > (sensors ? MAX_SENSORS : MAX_DEMO)) {
+            // La pause doit rester disponible toute la journée : pas de limite avec la bague ou le bouton
+            boolean allDay = sensors && BleSensors.get(LiveService.this).staysOn();
+            if (!allDay && now - started > (sensors ? MAX_SENSORS : MAX_DEMO)) {
                 stopFromOutside(LiveService.this);
                 return;
             }
@@ -145,7 +145,8 @@ public class LiveService extends Service {
         String title = sensors ? "Mesure en direct" : "Démo en direct";
         String text = sensors
                 ? Character.toUpperCase(label.charAt(0)) + label.substring(1)
-                        + (label.equals("bouton pause") ? " : prêt, appuie deux fois pour faire une pause." : " : le widget suit ton pouls.")
+                        + (label.equals("bouton pause") ? " : prêt, appuie deux fois pour faire une pause."
+                                : label.contains("bague") ? " : relevés et pause prêts." : " : le widget suit ton pouls.")
                 : "Le widget affiche un pouls simulé (valeurs inventées).";
         return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notif_heart)

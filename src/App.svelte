@@ -3,6 +3,7 @@
   import { alertBridge, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
   import { alarm, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
+  import { startHealthSync } from './lib/healthSync.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
   import Accueil from './pages/Accueil.svelte';
   import Reperes from './pages/Reperes.svelte';
@@ -28,6 +29,8 @@
   }
 
   syncAlertConfig();
+  // Relevés de la bague et de la ceinture gardés par l'appli Android
+  startHealthSync();
   // Pauses demandées pendant que l'appli était fermée : notées dans le journal à l'ouverture
   recordPendingPauses();
   $effect(() => {
@@ -62,6 +65,7 @@
 
   const TITLES: Record<Route, string> = {
     accueil: 'Mon renard',
+    suivi: 'Suivi · Mon renard',
     historique: 'Historique · Mon renard',
     reperes: 'Repères · Mon renard'
   };
@@ -76,6 +80,12 @@
       label: 'Mon renard',
       // maison
       icon: 'M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-5.5h-5V21H5a1 1 0 0 1-1-1z'
+    },
+    {
+      route: 'suivi',
+      label: 'Suivi',
+      // battement de cœur
+      icon: 'M3 12.5h4l2.4-6.5 4.2 12.5 2.6-6H21'
     },
     {
       route: 'historique',
@@ -100,6 +110,15 @@
   <main>
     {#if route === 'reperes'}
       <Reperes />
+    {:else if route === 'suivi'}
+      {#await import('./pages/Suivi.svelte') then page}
+        <page.default />
+      {:catch}
+        <div class="load-error" role="alert">
+          <p>Le suivi n'a pas pu s'ouvrir. Tes données sont intactes.</p>
+          <button type="button" onclick={() => location.reload()}>Recharger l'appli</button>
+        </div>
+      {/await}
     {:else if route === 'historique'}
       <!-- Chargé à la demande : les courbes ne pèsent rien tant qu'on n'ouvre pas l'historique -->
       {#await import('./pages/Historique.svelte') then page}

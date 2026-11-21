@@ -31,6 +31,33 @@ export interface FeltEvent {
   note?: string;
 }
 
+/** Ce que les capteurs relèvent. `belt…` : une valeur par minute de ceinture portée. */
+export const HEALTH_METRICS = ['hr', 'hrv', 'stress', 'spo2', 'steps', 'meters', 'beltHr', 'beltHrv'] as const;
+export type HealthMetric = (typeof HEALTH_METRICS)[number];
+
+/** Une mesure datée. Une seule par mesure et par instant : relire la bague ne crée pas de doublons. */
+export interface HealthSample {
+  metric: HealthMetric;
+  at: number;
+  value: number;
+  /** Oxygène : plus bas et plus haut de l'heure. */
+  min?: number;
+  max?: number;
+}
+
+/** Codes de la bague : 2 léger, 3 profond, 4 paradoxal, 5 éveillé. */
+export type SleepStage = 2 | 3 | 4 | 5;
+
+/** Une nuit, rangée au jour du réveil. */
+export interface SleepNight {
+  /** Minuit (heure locale) du jour du réveil. */
+  night: number;
+  start: number;
+  end: number;
+  /** Phases à la suite : [phase, minutes]. */
+  stages: [SleepStage, number][];
+}
+
 /** Ce que l'interface envoie pour créer un check-in. */
 export interface CheckInInput {
   mood: number;

@@ -23,6 +23,29 @@
   --sky-top: #9fd0ea;
   --sky-bottom: #f6dfc6;
 
+  /* Le terrier (écran Suivi) : le ciel suit le thème, la terre reste sombre */
+  --scene-night: #2c4769;
+  --scene-dawn: #f0c4a6;
+  --scene-day: #a9dbf0;
+  --scene-dusk: #dfa48f;
+  --scene-ridge: #2f5a57;
+  --scene-ink: #16232c;
+  --scene-ring: #ffffff;
+  --soil: #43342b;
+  --soil-deep: #271d18;
+  --tunnel: #15100d;
+  --soil-ink: #e3d9d0;
+  --grass: #4d8f4f;
+  /* Profondeur du sommeil : une seule teinte, du plus clair (surface) au plus soutenu (fond) */
+  --stage-awake: #dfe6ff;
+  --stage-rem: #aebdff;
+  --stage-light: #8497f7;
+  --stage-deep: #6170ea;
+  /* Écart à ton habitude : bleu = plus bas, orange = plus haut, gris = comme d'habitude */
+  --dv-low: #3f62ad;
+  --dv-mid: #c9d1d4;
+  --dv-high: #c9551f;
+
   --font-display: 'Bricolage Grotesque Variable', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
 
@@ -53,6 +76,20 @@
     --heart: #ff7d9c;
     --sky-top: #24415c;
     --sky-bottom: #7a5a6e;
+    --scene-night: #0f1c2c;
+    --scene-dawn: #71516a;
+    --scene-day: #34607f;
+    --scene-dusk: #6f4963;
+    --scene-ridge: #1d3a44;
+    --scene-ink: #e8eef1;
+    --scene-ring: #13202b;
+    --soil: #2e241e;
+    --soil-deep: #1b1512;
+    --tunnel: #0d0907;
+    --grass: #79bf72;
+    --dv-low: #86a3ea;
+    --dv-mid: #3a4a55;
+    --dv-high: #f28a52;
     color-scheme: dark;
   }
 }

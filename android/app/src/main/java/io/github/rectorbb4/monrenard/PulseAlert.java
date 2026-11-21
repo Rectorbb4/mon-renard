@@ -195,6 +195,10 @@ final class PulseAlert {
      * même alerte désactivée. Vibration forte ; le son seulement pendant les plages horaires (pas au bureau).
      * L'instant sera noté dans le journal (« je le sens ») à la prochaine ouverture de la page.
      */
+    boolean isEnabled() {
+        return enabled;
+    }
+
     void trigger(String from) {
         long now = System.currentTimeMillis();
         if (now - lastTrigger < 5_000) return;
