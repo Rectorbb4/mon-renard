@@ -126,6 +126,8 @@ final class BleSensors {
     private final ArrayDeque<Long> gestureLog = new ArrayDeque<>();
     /** Pendant l'essai des gestes, ils sont montrés à la page et ne lancent aucune pause. */
     private volatile long ringTestUntil;
+    /** Le tactile a été ouvert pour un essai et n'a pas encore retrouvé son mode (bague déconnectée entre-temps). */
+    private boolean touchBorrowed;
     private long beltMinute;
     private int beltSum;
     private int beltCount;
@@ -199,15 +201,24 @@ final class BleSensors {
         return hex.toString();
     }
 
-    /** Fil principal. Au début d'un essai, le tactile de la bague est réveillé : il s'endort au bout de quelques minutes. */
+    /** Fil principal. Le tactile est ouvert le temps de l'essai, puis la bague retrouve le mode choisi dans QRing. */
     void setRingTest(boolean on) {
         ringTestUntil = on ? System.currentTimeMillis() + RING_TEST_MAX : 0;
-        if (!on) return;
         Sensor r = sensors.get(RING);
-        if (r != null && "connected".equals(r.state)) {
-            r.write(ColmiProtocol.touchOn());
-            r.write(ColmiProtocol.touchWake());
+        boolean linked = r != null && "connected".equals(r.state);
+        if (on) {
+            if (linked) {
+                r.write(ColmiProtocol.touchMode(ColmiProtocol.TOUCH_KEYS));
+                touchBorrowed = true;
+            }
+        } else if (touchBorrowed && linked) {
+            r.write(ColmiProtocol.touchMode(savedTouchMode()));
+            touchBorrowed = false;
         }
+    }
+
+    private int savedTouchMode() {
+        return ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).getInt("tactileMode", ColmiProtocol.TOUCH_CLOSED);
     }
 
     private boolean ringTesting() {
@@ -223,6 +234,11 @@ final class BleSensors {
         // La bague confirme le réglage du tactile : noté pour le diagnostic, ce n'est pas un geste
         if ((v[0] & 0xff) == ColmiProtocol.CMD_TOUCH) {
             logLine("tactile " + hex(v));
+            // Hors essai, c'est le choix fait dans QRing : c'est lui qu'on remettra après un essai
+            int mode = ColmiProtocol.touchModeOf(v);
+            if (mode >= 0 && !ringTesting()) {
+                ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).edit().putInt("tactileMode", mode).apply();
+            }
             return true;
         }
         if (ColmiProtocol.isGesture(v)) {
@@ -1062,6 +1078,10 @@ final class BleSensors {
         private void startSession() {
             session = new ColmiProtocol.Session();
             write(ColmiProtocol.gestureOn());
+            if (touchBorrowed && !ringTesting()) {
+                write(ColmiProtocol.touchMode(savedTouchMode()));
+                touchBorrowed = false;
+            }
             sync = new RingSync(ctx, main, new RingSync.Link() {
                 @Override
                 public void sendV1(byte[] packet) {

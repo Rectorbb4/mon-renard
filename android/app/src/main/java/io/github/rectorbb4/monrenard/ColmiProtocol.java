@@ -35,18 +35,19 @@ final class ColmiProtocol {
     /** Fait clignoter la bague deux fois (même source). */
     static final int CMD_BLINK = 0x10;
     /**
-     * Le tactile (tapoter, glisser) : il arrive ensuite comme des touches média et se rendort tout seul.
-     * 3B 02 00 type minutes le règle, 3B 02 02 type 01 le réveille ; la bague renvoie la même trame.
-     * Source : DavidWAbrahams/ha-colmi-ble (mesuré sur R08, type 1 = touches média) ; à confirmer sur la R03.
+     * Le tactile, réglé par « Sélection de geste » dans QRing : 3B 02 01 mode 01, la bague renvoie la même trame
+     * (3B 01 01 mode 01 quand QRing le relit). Relevé sur la R03 le 21 nov. 2026 : mode 0 = Fermer,
+     * mode 1 = tapotement reçu comme KEYCODE_MEDIA_NEXT.
      */
     static final int CMD_TOUCH = 0x3b;
-    private static final int TOUCH_MEDIA = 1;
-    private static final int TOUCH_SLEEP_MINUTES = 2;
+    static final int TOUCH_CLOSED = 0;
+    static final int TOUCH_KEYS = 1;
     /**
      * Réponses connues : 0x03 batterie, 0x73 « nouvelles données », 0x9e refus de 1E 03 par ta bague,
      * 0x01 heure, 0x10 clignotement, puis les relevés (pas, pouls, stress, variabilité).
+     * 0x48 : envoyé quand QRing est ouvert, sans lien avec les gestes.
      */
-    private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73, 0x9e, 0x01, CMD_BLINK, 0x43, 0x15, 0x37, 0x39};
+    private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73, 0x9e, 0x01, CMD_BLINK, 0x43, 0x15, 0x37, 0x39, 0x48};
 
     static boolean isKnown(byte cmd) {
         for (int k : KNOWN) if ((cmd & 0xff) == k) return true;
@@ -85,12 +86,15 @@ final class ColmiProtocol {
         return packet(CMD_GESTURE, 0x04);
     }
 
-    static byte[] touchOn() {
-        return packet(CMD_TOUCH, 0x02, 0x00, TOUCH_MEDIA, TOUCH_SLEEP_MINUTES);
+    static byte[] touchMode(int mode) {
+        return packet(CMD_TOUCH, 0x02, 0x01, mode, 0x01);
     }
 
-    static byte[] touchWake() {
-        return packet(CMD_TOUCH, 0x02, 0x02, TOUCH_MEDIA, 0x01);
+    /** Le mode annoncé par la bague dans sa réponse, -1 si ce message n'en donne pas. */
+    static int touchModeOf(byte[] v) {
+        if (v == null || v.length < 5 || (v[0] & 0xff) != CMD_TOUCH) return -1;
+        int kind = v[1] & 0xff;
+        return (kind == 0x01 || kind == 0x02) && v[2] == 0x01 ? v[3] & 0xff : -1;
     }
 
     static byte[] blink() {

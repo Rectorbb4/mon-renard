@@ -112,12 +112,13 @@ export function usableGestures(results: GestureResult[]): number {
   return groups.size;
 }
 
-const KEY = 'mon-renard:essai-gestes-2';
+const KEY = 'mon-renard:essai-gestes-3';
 
 export function loadTrials(): Trials {
   try {
-    // Les essais d'avant la 2.0 ont été faits avec le tactile endormi
+    // Les essais d'avant la 2.1 ont été faits avec le tactile fermé
     localStorage.removeItem('mon-renard:essai-gestes');
+    localStorage.removeItem('mon-renard:essai-gestes-2');
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   } catch {

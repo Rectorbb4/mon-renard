@@ -16,8 +16,8 @@
   const TRIAL_MS = 8000;
   const inApp = isAndroidApp();
   const b = pauseBridge();
-  // À partir de la 2.0, l'essai réveille aussi le tactile de la bague
-  const canTest = typeof b?.setRingTest === 'function' && (appVersion()?.code ?? 0) >= 11;
+  // À partir de la 2.1, l'essai ouvre vraiment le tactile de la bague, puis remet son réglage
+  const canTest = typeof b?.setRingTest === 'function' && (appVersion()?.code ?? 0) >= 12;
 
   let connected = $state(ringConnected());
   let trials = $state.raw<Trials>(loadTrials());
@@ -124,7 +124,7 @@
     <h2 id="gesture-title">Essai des gestes</h2>
 
     {#if !canTest}
-      <p class="soft">Installe la version 2.0 de l'appli (plus bas) : elle réveille le tactile de la bague pendant l'essai.</p>
+      <p class="soft">Installe la version 2.1 de l'appli (plus bas) : elle ouvre le tactile de la bague pendant l'essai.</p>
     {:else}
       <p class="soft">
         Fais chaque geste pendant les 8 secondes. L'appli note ce que la bague envoie et compare : seuls les gestes aux
