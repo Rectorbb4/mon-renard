@@ -106,6 +106,8 @@ public class LiveService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            // Arrêt voulu : les capteurs ne reviennent plus tout seuls
+            BleSensors.get(this).forgetAll();
             stopFromOutside(this);
             return START_NOT_STICKY;
         }

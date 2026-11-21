@@ -49,7 +49,7 @@
   $effect(() => {
     const onBle = (e: Event) => {
       const d = (e as CustomEvent).detail ?? {};
-      if (d.kind === 'bague') unknown = readUnknown();
+      if (d.kind === 'bague' && d.type !== 'reading') unknown = readUnknown();
       if (d.kind !== 'bouton') return;
       if (d.type === 'status') {
         status = d.state;

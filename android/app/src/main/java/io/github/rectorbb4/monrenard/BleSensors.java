@@ -30,9 +30,11 @@ import org.json.JSONObject;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -88,6 +90,14 @@ final class BleSensors {
     private static final long WIDGET_EVERY = 5_000;
     /** Tant que la ceinture donne un pouls (moins de 5 s), celui de la bague est ignoré : elle est plus précise. */
     private static final long PREFER_BELT_MS = 5_000;
+    /** Les capteurs à rebrancher tout seuls (mise à jour, redémarrage), jusqu'à ce qu'on les arrête. */
+    private static final String WANTED = "voulus";
+    private static final String[] KINDS = {BELT, RING, BUTTON};
+    /** Un capteur absent (ceinture rangée…) est recherché à ce rythme, sans jamais abandonner. */
+    private static final long RETRY_EVERY = 3 * 60_000;
+    private static final long LOOK_FOR = 10_000;
+    /** L'essai des gestes s'arrête de lui-même : il ne peut pas bloquer la pause. */
+    private static final long RING_TEST_MAX = 10 * 60_000;
 
     interface Listener {
         void onEvent(String json);
@@ -114,6 +124,8 @@ final class BleSensors {
     private final ArrayDeque<Long> gestures = new ArrayDeque<>();
     /** Gestes reçus depuis une heure, pour voir si la bague en envoie sans qu'on le veuille. */
     private final ArrayDeque<Long> gestureLog = new ArrayDeque<>();
+    /** Pendant l'essai des gestes, ils sont montrés à la page et ne lancent aucune pause. */
+    private volatile long ringTestUntil;
     private long beltMinute;
     private int beltSum;
     private int beltCount;
@@ -178,9 +190,47 @@ final class BleSensors {
     }
 
     private void logUnknown(byte[] v) {
+        logLine(hex(v));
+    }
+
+    private static String hex(byte[] v) {
         StringBuilder hex = new StringBuilder();
         for (byte b : v) hex.append(String.format("%02x", b));
-        logLine(hex.toString());
+        return hex.toString();
+    }
+
+    void setRingTest(boolean on) {
+        ringTestUntil = on ? System.currentTimeMillis() + RING_TEST_MAX : 0;
+    }
+
+    private boolean ringTesting() {
+        return System.currentTimeMillis() < ringTestUntil;
+    }
+
+    private void emitGesture(String channel, String code) {
+        emit(event(RING, "gesture").putOpt("channel", channel).putOpt("code", code).putOpt("at", System.currentTimeMillis()));
+    }
+
+    /** Un message de la bague : le geste connu, ou un message inconnu qui en est peut-être un autre. Vrai si c'est le geste. */
+    private boolean onRingMessage(byte[] v, long now) {
+        if (ColmiProtocol.isGesture(v)) {
+            logUnknown(v);
+            if (ringTesting()) emitGesture("message", hex(v));
+            else onRingGesture(now);
+            return true;
+        }
+        return false;
+    }
+
+    private void onUnknownMessage(byte[] v) {
+        if (ColmiProtocol.isKnown(v[0])) return;
+        logUnknown(v);
+        if (ringTesting()) emitGesture("message", hex(v));
+    }
+
+    /** Version d'essai : un message comme s'il venait de la bague. */
+    void debugPacket(byte[] v) {
+        if (!onRingMessage(v, System.currentTimeMillis())) onUnknownMessage(v);
     }
 
     private void logLine(String text) {
@@ -199,8 +249,10 @@ final class BleSensors {
     boolean onRingKey(String device, int keyCode, boolean down, int repeat) {
         if (!ColmiProtocol.isRing(device)) return false;
         if (!down || repeat != 0) return true;
-        logLine("touche " + android.view.KeyEvent.keyCodeToString(keyCode));
-        onRingGesture(System.currentTimeMillis());
+        String key = android.view.KeyEvent.keyCodeToString(keyCode);
+        logLine("touche " + key);
+        if (ringTesting()) emitGesture("touche", key);
+        else onRingGesture(System.currentTimeMillis());
         return true;
     }
 
@@ -308,6 +360,7 @@ final class BleSensors {
 
     /** Branche un capteur. Sans effet (à part redire son état) s'il est déjà en route. */
     void start(String kind) {
+        setWanted(kind, true);
         Sensor s = sensors.get(kind);
         if (s != null) {
             s.emitStatus();
@@ -322,6 +375,56 @@ final class BleSensors {
     void stop(String kind, String message) {
         Sensor s = sensors.get(kind);
         if (s != null) s.end(message);
+    }
+
+    /**
+     * « Arrêter » : il ne se rebranchera plus tout seul. La page rappelle aussi ceci après une erreur :
+     * le capteur est alors déjà terminé, et il reste à rebrancher.
+     */
+    void stopByUser(String kind) {
+        if (!sensors.containsKey(kind)) return;
+        setWanted(kind, false);
+        stop(kind, null);
+    }
+
+    /** « Arrêter la mesure » depuis la notification. */
+    void forgetAll() {
+        for (String k : KINDS) setWanted(k, false);
+    }
+
+    private Set<String> wanted() {
+        SharedPreferences p = ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE);
+        if (p.contains(WANTED)) return new HashSet<>(p.getStringSet(WANTED, new HashSet<>()));
+        // Avant la 1.9, rien n'était noté : on reprend les capteurs déjà utilisés sur ce téléphone
+        Set<String> used = new HashSet<>();
+        for (String k : KINDS) if (p.getString(k, null) != null) used.add(k);
+        p.edit().putStringSet(WANTED, used).apply();
+        return used;
+    }
+
+    private void setWanted(String kind, boolean on) {
+        Set<String> list = wanted();
+        if (on ? list.add(kind) : list.remove(kind)) {
+            ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE).edit().putStringSet(WANTED, list).apply();
+        }
+    }
+
+    /** Rebranche les capteurs voulus (ouverture de l'appli, mise à jour, redémarrage du téléphone). Fil principal. */
+    void resumeWanted() {
+        if (!hasBluetooth()) return;
+        if (Build.VERSION.SDK_INT >= 31
+                && ctx.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        SharedPreferences p = ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE);
+        Set<String> want = wanted();
+        for (String k : KINDS) {
+            String address = p.getString(k, null);
+            if (!want.contains(k) || sensors.containsKey(k) || !BluetoothAdapter.checkBluetoothAddress(address)) continue;
+            Sensor s = new Sensor(k);
+            sensors.put(k, s);
+            s.waitFor(address);
+        }
     }
 
     void stopAll(String message) {
@@ -426,12 +529,30 @@ final class BleSensors {
         /** Essai sur un appareil déjà relié au téléphone ; s'il ne convient pas, on repart sur une recherche. */
         private boolean direct;
         private boolean triedDirect;
+        /** Le lien Bluetooth est établi (les réglages du capteur sont peut-être encore en cours). */
+        private boolean linked;
         private final ArrayDeque<Op> ops = new ArrayDeque<>();
         private boolean busy;
         private ColmiProtocol.Session session;
         private long lastNotice;
 
         private final Runnable scanTimeout = this::nothingFound;
+        private final Runnable endLook = this::stopScan;
+        /** Le capteur ne revient pas (Bluetooth coupé puis rallumé, longue absence) : on relance l'attente. */
+        private final Runnable retry = new Runnable() {
+            @Override
+            public void run() {
+                if (ended || !"reconnecting".equals(state)) return;
+                BluetoothAdapter a = adapter();
+                String known = prefs().getString(kind, null);
+                if (!linked && a != null && a.isEnabled() && BluetoothAdapter.checkBluetoothAddress(known)) {
+                    closeGatt();
+                    openGatt(a.getRemoteDevice(known), true);
+                    lookFor(a, known);
+                }
+                main.postDelayed(this, RETRY_EVERY);
+            }
+        };
         private final Runnable takeCandidate = () -> {
             if (candidate != null && "scanning".equals(state)) connect(candidate, candidateName);
         };
@@ -477,6 +598,50 @@ final class BleSensors {
         }
 
         // ---------------------------------------------------------- recherche
+
+        /** Rebranché tout seul : on attend l'appareil déjà connu, aussi longtemps qu'il faut, sans message d'erreur. */
+        void waitFor(String address) {
+            everConnected = true;
+            BluetoothAdapter a = adapter();
+            BluetoothDevice d = a != null ? a.getRemoteDevice(address) : null;
+            if (d != null) name = nameOf(d);
+            setState("reconnecting");
+            if (d != null && a.isEnabled()) openGatt(d, true);
+            keepTrying();
+        }
+
+        private void keepTrying() {
+            main.removeCallbacks(retry);
+            main.postDelayed(retry, RETRY_EVERY);
+        }
+
+        /** Courte recherche de cet appareil précis : s'il est là, connexion directe. */
+        private void lookFor(BluetoothAdapter a, String address) {
+            if (ended || scanCallback != null) return;
+            BluetoothLeScanner s = a.getBluetoothLeScanner();
+            if (s == null) return;
+            scanner = s;
+            scanCallback = new ScanCallback() {
+                @Override
+                public void onScanResult(int callbackType, ScanResult result) {
+                    BluetoothDevice d = result.getDevice();
+                    main.post(() -> {
+                        if (ended || linked || scanCallback == null || !"reconnecting".equals(state)) return;
+                        stopScan();
+                        closeGatt();
+                        openGatt(d, false);
+                    });
+                }
+            };
+            List<ScanFilter> filters = new ArrayList<>();
+            filters.add(new ScanFilter.Builder().setDeviceAddress(address).build());
+            try {
+                s.startScan(filters, new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build(), scanCallback);
+                main.postDelayed(endLook, LOOK_FOR);
+            } catch (Exception e) {
+                scanCallback = null;
+            }
+        }
 
         void scan() {
             refreshActive();
@@ -621,6 +786,7 @@ final class BleSensors {
         private void stopScan() {
             main.removeCallbacks(scanTimeout);
             main.removeCallbacks(takeCandidate);
+            main.removeCallbacks(endLook);
             if (scanner != null && scanCallback != null) {
                 try {
                     scanner.stopScan(scanCallback);
@@ -674,6 +840,7 @@ final class BleSensors {
         }
 
         private void closeGatt() {
+            linked = false;
             if (gatt == null) return;
             try {
                 gatt.close();
@@ -691,6 +858,7 @@ final class BleSensors {
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         main.removeCallbacks(connectTimeout);
                         everConnected = true;
+                        linked = true;
                         try {
                             g.discoverServices();
                         } catch (SecurityException e) {
@@ -766,6 +934,7 @@ final class BleSensors {
             }
             setState("reconnecting");
             openGatt(d, true);
+            keepTrying();
         }
 
         private void setup() {
@@ -940,13 +1109,9 @@ final class BleSensors {
                 }
                 if (!ColmiProtocol.NOTIFY.equals(id)) return;
                 // Geste de la bague (celui qui prend les photos dans QRing) : marche aussi appli fermée
-                if (ColmiProtocol.isGesture(v)) {
-                    logUnknown(v);
-                    onRingGesture(now);
-                    return;
-                }
+                if (onRingMessage(v, now)) return;
                 if (sync != null && sync.onV1(v)) return;
-                if (!ColmiProtocol.isKnown(v[0])) logUnknown(v);
+                onUnknownMessage(v);
                 if (session == null) return;
                 int r = session.receive(v, now);
                 if (r > 0) reading(r, null, now);
@@ -980,6 +1145,7 @@ final class BleSensors {
             main.removeCallbacks(connectTimeout);
             main.removeCallbacks(opTimeout);
             main.removeCallbacks(tick);
+            main.removeCallbacks(retry);
             if (sync != null) sync.stop();
             sync = null;
             ops.clear();

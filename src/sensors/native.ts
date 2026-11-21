@@ -50,7 +50,7 @@ export function stateLabel(state: string): string {
     case 'connecting':
       return 'connexion…';
     case 'reconnecting':
-      return 'reconnexion…';
+      return 'en attente…';
     case 'connected':
       return 'connectée';
     default:

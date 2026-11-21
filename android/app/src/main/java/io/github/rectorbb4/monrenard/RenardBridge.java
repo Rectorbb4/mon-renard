@@ -62,7 +62,7 @@ public class RenardBridge {
 
     @JavascriptInterface
     public void bleStop(String kind) {
-        activity.runOnUiThread(() -> BleSensors.get(activity).stop(kind, null));
+        activity.runOnUiThread(() -> BleSensors.get(activity).stopByUser(kind));
     }
 
     /** Les capteurs en route, en JSON : [{kind, state, name}]. */
@@ -151,6 +151,21 @@ public class RenardBridge {
     @JavascriptInterface
     public int ringGesturesLastHour() {
         return BleSensors.get(activity).ringGesturesLastHour();
+    }
+
+    /** Essai des gestes : ils arrivent à la page (événement « gesture ») et ne lancent aucune pause. */
+    @JavascriptInterface
+    public void setRingTest(boolean on) {
+        BleSensors.get(activity).setRingTest(on);
+    }
+
+    /** Version d'essai seulement : un message comme s'il venait de la bague (en hexadécimal). */
+    @JavascriptInterface
+    public void debugRingPacket(String hex) {
+        if (!BuildConfig.DEBUG || hex == null) return;
+        byte[] v = new byte[hex.length() / 2];
+        for (int i = 0; i < v.length; i++) v[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+        activity.runOnUiThread(() -> BleSensors.get(activity).debugPacket(v));
     }
 
     /** Version d'essai seulement : comme deux appuis sur le bouton pause (tests automatiques). */

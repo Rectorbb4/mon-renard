@@ -2,6 +2,7 @@
   import AlertCard from '../components/AlertCard.svelte';
   import AndroidCard from '../components/AndroidCard.svelte';
   import BackupCard from '../components/BackupCard.svelte';
+  import GestureTestCard from '../components/GestureTestCard.svelte';
   import PauseButtonCard from '../components/PauseButtonCard.svelte';
 
   const NUMBERS = [
@@ -56,6 +57,8 @@
   </div>
 
   <PauseButtonCard />
+
+  <GestureTestCard />
 
   <AlertCard />
 

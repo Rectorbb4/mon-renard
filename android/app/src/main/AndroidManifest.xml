@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Les capteurs se rebranchent tout seuls quand le téléphone redémarre -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -50,6 +52,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Affiche sur le widget le pouls mesuré en direct pendant que l'appli est en arrière-plan" />
         </service>
+
+        <!-- Après une mise à jour ou un redémarrage : les capteurs reviennent sans rien faire -->
+        <receiver
+            android:name=".SensorsRestart"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Boutons « Arrêter » et « Pas maintenant » de la notification d'alerte -->
         <receiver

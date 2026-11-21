@@ -65,6 +65,8 @@ public class MainActivity extends Activity {
         BleSensors.get(this).setListener(json -> runOnUiThread(() -> {
             if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('renard-ble',{detail:" + json + "}))", null);
         }));
+        // Tes capteurs reviennent sans rien faire, même juste après une mise à jour de l'appli
+        BleSensors.get(this).resumeWanted();
         // L'alerte « ton pouls monte » prévient la page (écran d'alerte, nom du son choisi)
         PulseAlert.get(this).setListener((name, json) -> runOnUiThread(() -> {
             if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('" + name + "',{detail:" + json + "}))", null);
@@ -198,6 +200,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         PulseAlert.appVisible = false;
+        BleSensors.get(this).setRingTest(false);
         LiveService.startIfLive(this);
         web.onPause();
         super.onPause();

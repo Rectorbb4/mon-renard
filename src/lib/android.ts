@@ -40,6 +40,8 @@ export interface RenardAndroid {
   ringGestureOn?(): boolean;
   setRingGesture?(on: boolean): void;
   ringGesturesLastHour?(): number;
+  /** Appli 1.9 et suivantes : essai des gestes, montrés à la page sans lancer de pause. */
+  setRingTest?(on: boolean): void;
   bleStart?(kind: string): boolean;
   bleStop?(kind: string): void;
   bleActive?(): string;
@@ -47,7 +49,7 @@ export interface RenardAndroid {
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */
 type PauseBridge = Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>> &
-  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour'>;
+  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour' | 'setRingTest'>;
 
 export function pauseBridge(): PauseBridge | null {
   const b = bridge();
