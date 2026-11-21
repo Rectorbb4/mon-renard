@@ -35,6 +35,14 @@ final class ColmiProtocol {
     /** Fait clignoter la bague deux fois (même source). */
     static final int CMD_BLINK = 0x10;
     /**
+     * Le tactile (tapoter, glisser) : il arrive ensuite comme des touches média et se rendort tout seul.
+     * 3B 02 00 type minutes le règle, 3B 02 02 type 01 le réveille ; la bague renvoie la même trame.
+     * Source : DavidWAbrahams/ha-colmi-ble (mesuré sur R08, type 1 = touches média) ; à confirmer sur la R03.
+     */
+    static final int CMD_TOUCH = 0x3b;
+    private static final int TOUCH_MEDIA = 1;
+    private static final int TOUCH_SLEEP_MINUTES = 2;
+    /**
      * Réponses connues : 0x03 batterie, 0x73 « nouvelles données », 0x9e refus de 1E 03 par ta bague,
      * 0x01 heure, 0x10 clignotement, puis les relevés (pas, pouls, stress, variabilité).
      */
@@ -75,6 +83,14 @@ final class ColmiProtocol {
 
     static byte[] gestureOn() {
         return packet(CMD_GESTURE, 0x04);
+    }
+
+    static byte[] touchOn() {
+        return packet(CMD_TOUCH, 0x02, 0x00, TOUCH_MEDIA, TOUCH_SLEEP_MINUTES);
+    }
+
+    static byte[] touchWake() {
+        return packet(CMD_TOUCH, 0x02, 0x02, TOUCH_MEDIA, 0x01);
     }
 
     static byte[] blink() {

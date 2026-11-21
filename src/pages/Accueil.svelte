@@ -8,6 +8,9 @@
   import { gaugeValues } from '../lib/gauges';
   import type { CheckIn, FeltEvent } from '../data/types';
   import { MOODS, moodFromScore, type MoodId } from '../fox/moods';
+  import { pulseLevel } from '../fox/pulse';
+  import { alertConfig } from '../lib/alert.svelte';
+  import { live } from '../lib/live.svelte';
   import { getDB } from '../data/db';
   import { untrack } from 'svelte';
   import type { AppAction } from '../lib/android';
@@ -42,6 +45,30 @@
   );
 
   const gauges = $derived(gaugeValues(journal.last, journal.lastSleep, now));
+
+  // Il sent aussi ton cœur (vrais capteurs seulement) : il s'agite un moment, ton humeur ne change pas.
+  let pulseClock = $state(Date.now());
+  let heartUp = $state(false);
+  const pulse = $derived(
+    live.simulated ? 0 : pulseLevel(live.hrSeries, Math.max(pulseClock, live.lastAt), alertConfig.threshold)
+  );
+
+  $effect(() => {
+    const timer = setInterval(() => (pulseClock = Date.now()), 3000);
+    return () => clearInterval(timer);
+  });
+
+  $effect(() => {
+    const level = pulse;
+    untrack(() => {
+      if (!heartUp && level >= 0.6) {
+        heartUp = true;
+        if (!breathing && !checking) reactSignal += 1;
+      } else if (heartUp && level < 0.3) {
+        heartUp = false;
+      }
+    });
+  });
 
   $effect(() => {
     const tick = () => (now = Date.now());
@@ -174,12 +201,15 @@
     </header>
   {/if}
 
-  <FoxStage {mood} compact={checking} calm={breathing} {reactSignal} {guide} />
+  <FoxStage {mood} compact={checking} calm={breathing} {reactSignal} {guide} pulse={breathing ? 0 : pulse} />
 
   {#if !breathing}
   <div class="mood-line" aria-live="polite">
     <p class="mood-name">{MOODS[mood].label}</p>
     <p class="mood-caption">{MOODS[mood].caption}</p>
+    {#if heartUp && !checking}
+      <p class="heart-line">Ton cœur s'accélère, ton renard le sent aussi.</p>
+    {/if}
     {#if !checking}
       {#if thanks}
         <p class="since thanks">C'est noté. Ton renard prend ton humeur.</p>
@@ -301,6 +331,12 @@
 
   .mood-caption {
     color: var(--muted);
+  }
+
+  .heart-line {
+    margin-top: 6px;
+    color: var(--heart);
+    font-weight: 700;
   }
 
   .since {

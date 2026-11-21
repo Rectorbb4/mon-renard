@@ -199,8 +199,15 @@ final class BleSensors {
         return hex.toString();
     }
 
+    /** Fil principal. Au début d'un essai, le tactile de la bague est réveillé : il s'endort au bout de quelques minutes. */
     void setRingTest(boolean on) {
         ringTestUntil = on ? System.currentTimeMillis() + RING_TEST_MAX : 0;
+        if (!on) return;
+        Sensor r = sensors.get(RING);
+        if (r != null && "connected".equals(r.state)) {
+            r.write(ColmiProtocol.touchOn());
+            r.write(ColmiProtocol.touchWake());
+        }
     }
 
     private boolean ringTesting() {
@@ -213,6 +220,11 @@ final class BleSensors {
 
     /** Un message de la bague : le geste connu, ou un message inconnu qui en est peut-être un autre. Vrai si c'est le geste. */
     private boolean onRingMessage(byte[] v, long now) {
+        // La bague confirme le réglage du tactile : noté pour le diagnostic, ce n'est pas un geste
+        if ((v[0] & 0xff) == ColmiProtocol.CMD_TOUCH) {
+            logLine("tactile " + hex(v));
+            return true;
+        }
         if (ColmiProtocol.isGesture(v)) {
             logUnknown(v);
             if (ringTesting()) emitGesture("message", hex(v));

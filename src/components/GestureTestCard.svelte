@@ -1,6 +1,6 @@
 <script lang="ts">
   // Essai des gestes de la bague : chaque geste est capté pendant 8 secondes, sans lancer de pause.
-  import { isAndroidApp, pauseBridge } from '../lib/android';
+  import { appVersion, isAndroidApp, pauseBridge } from '../lib/android';
   import {
     CONTROL,
     GESTURES,
@@ -16,7 +16,8 @@
   const TRIAL_MS = 8000;
   const inApp = isAndroidApp();
   const b = pauseBridge();
-  const canTest = typeof b?.setRingTest === 'function';
+  // À partir de la 2.0, l'essai réveille aussi le tactile de la bague
+  const canTest = typeof b?.setRingTest === 'function' && (appVersion()?.code ?? 0) >= 11;
 
   let connected = $state(ringConnected());
   let trials = $state.raw<Trials>(loadTrials());
@@ -123,7 +124,7 @@
     <h2 id="gesture-title">Essai des gestes</h2>
 
     {#if !canTest}
-      <p class="soft">Installe la version 1.9 de l'appli (plus bas) pour voir ce que ta bague envoie à chaque geste.</p>
+      <p class="soft">Installe la version 2.0 de l'appli (plus bas) : elle réveille le tactile de la bague pendant l'essai.</p>
     {:else}
       <p class="soft">
         Fais chaque geste pendant les 8 secondes. L'appli note ce que la bague envoie et compare : seuls les gestes aux

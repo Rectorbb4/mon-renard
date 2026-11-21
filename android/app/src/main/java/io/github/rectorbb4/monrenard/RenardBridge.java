@@ -156,7 +156,7 @@ public class RenardBridge {
     /** Essai des gestes : ils arrivent à la page (événement « gesture ») et ne lancent aucune pause. */
     @JavascriptInterface
     public void setRingTest(boolean on) {
-        BleSensors.get(activity).setRingTest(on);
+        activity.runOnUiThread(() -> BleSensors.get(activity).setRingTest(on));
     }
 
     /** Version d'essai seulement : un message comme s'il venait de la bague (en hexadécimal). */

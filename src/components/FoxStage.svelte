@@ -10,7 +10,8 @@
     compact = false,
     reactSignal = 0,
     guide = null,
-    calm = false
+    calm = false,
+    pulse = 0
   }: {
     mood: MoodId;
     /** Scène moins haute, pour laisser la place au check-in. */
@@ -21,6 +22,8 @@
     reactSignal?: number;
     /** Respiration guidée : air dans les poumons (0 à 1), lu à chaque image. */
     guide?: (() => number) | null;
+    /** Le pouls qui monte (0 à 1) : il s'agite sans changer d'humeur. */
+    pulse?: number;
   } = $props();
 
   let host: HTMLDivElement;
@@ -81,6 +84,11 @@
   $effect(() => {
     const next = guide;
     scene?.setGuide(next);
+  });
+
+  $effect(() => {
+    const next = pulse;
+    scene?.setPulse(next);
   });
 
   let lastSignal = 0;

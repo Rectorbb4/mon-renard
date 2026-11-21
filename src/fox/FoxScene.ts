@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MOODS, randomBetween, type Gesture, type Mood, type MoodId } from './moods';
+import { agitated } from './pulse';
 
 export interface FoxSceneOptions {
   modelUrl: string;
@@ -169,6 +170,8 @@ export class FoxScene {
   // Minuteries
   private time = 0;
   private breathPhase = 0;
+  /** Le cœur de son humain qui s'accélère (0 à 1) : voir pulse.ts. */
+  private pulse = 0;
   private nextGestureAt = 0;
   private nextBlinkAt = 0;
   private blinkStart = -1;
@@ -551,6 +554,11 @@ export class FoxScene {
     if (guide && this.busy === 'gesture') this.playBase(0.6);
   }
 
+  /** Le pouls monte (0 = calme, 1 = très rapide) : il s'agite, sans changer d'humeur ni de décor. */
+  setPulse(level: number): void {
+    this.pulse = Math.min(1, Math.max(0, level));
+  }
+
   /** Le renard somnole (0 = éveillé, 1 = yeux presque fermés). Sert aux images du widget de nuit. */
   setDrowsy(amount: number): void {
     this.drowsy = Math.min(1, Math.max(0, amount));
@@ -630,8 +638,9 @@ export class FoxScene {
 
     // 1. Glissement doux vers l'humeur visée (environ 2 secondes)
     const k = 1 - Math.exp(-dt * 1.6);
+    const aim = this.pulse > 0 ? agitated(this.target, this.pulse) : this.target;
     for (const key of Object.keys(this.blend) as (keyof Blend)[]) {
-      this.blend[key] += (this.target[key] - this.blend[key]) * k;
+      this.blend[key] += (aim[key] - this.blend[key]) * k;
     }
     for (const key of Object.keys(this.colors) as (keyof ColorBlend)[]) {
       this.colors[key].lerp(this.targetCol[key], k);
@@ -657,6 +666,8 @@ export class FoxScene {
         const g = this.mood.gestures[Math.floor(Math.random() * this.mood.gestures.length)];
         this.playGesture(g);
       }
+      const idle = this.actions.get(this.mood.base);
+      if (idle && this.active === idle) idle.timeScale = this.mood.speed * (1 + 0.6 * this.pulse);
       this.restorePose();
       this.mixer.update(dt);
       this.savePose();

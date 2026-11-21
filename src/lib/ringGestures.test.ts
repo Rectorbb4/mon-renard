@@ -42,6 +42,6 @@ describe('comparaison des gestes', () => {
   });
 
   it('dit quand un geste ne donne rien', () => {
-    expect(status({ poignet: [] })).toEqual({ poignet: 'rien' });
+    expect(status({ coup: [] })).toEqual({ coup: 'rien' });
   });
 });

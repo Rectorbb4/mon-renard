@@ -16,10 +16,9 @@ export const GESTURES = [
   { id: CONTROL, label: 'Ne rien faire', hint: 'Pose la main et ne bouge plus.' },
   { id: 'tap1', label: 'Un tapotement', hint: 'Tapote une fois la bague avec le pouce.' },
   { id: 'tap2', label: 'Deux tapotements', hint: 'Tapote deux fois de suite, vite.' },
-  { id: 'glisser', label: 'Glisser le pouce', hint: 'Fais glisser le pouce sur la bague.' },
-  { id: 'coup', label: 'Coup sec', hint: 'Donne un petit coup sec de la main.' },
-  { id: 'secouer', label: 'Secouer la main', hint: 'Secoue la main deux ou trois fois.' },
-  { id: 'poignet', label: 'Tourner le poignet', hint: 'Tourne le poignet, puis reviens.' }
+  { id: 'glisser-bout', label: 'Glisser vers le bout du doigt', hint: 'Fais glisser le pouce sur la bague, vers ton ongle.' },
+  { id: 'glisser-main', label: 'Glisser vers la main', hint: 'Fais glisser le pouce sur la bague, vers ta paume.' },
+  { id: 'coup', label: 'Coup sec de la main', hint: 'Donne un petit coup sec de la main.' }
 ] as const;
 
 const KEY_NAMES: Record<string, string> = {
@@ -113,10 +112,12 @@ export function usableGestures(results: GestureResult[]): number {
   return groups.size;
 }
 
-const KEY = 'mon-renard:essai-gestes';
+const KEY = 'mon-renard:essai-gestes-2';
 
 export function loadTrials(): Trials {
   try {
+    // Les essais d'avant la 2.0 ont été faits avec le tactile endormi
+    localStorage.removeItem('mon-renard:essai-gestes');
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   } catch {
