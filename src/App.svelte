@@ -1,7 +1,9 @@
 <script lang="ts">
   import AlertOverlay from './components/AlertOverlay.svelte';
   import { alertBridge, appVersion, onAppAction, takeLaunchAction, type AppAction } from './lib/android';
-  import { rememberGestureFix } from './lib/falsePauses';
+  import { getDB } from './data/db';
+  import { eraseFalsePauses } from './lib/falsePauses';
+  import { journal, startJournal } from './lib/journal.svelte';
   import { alarm, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { startHealthSync } from './lib/healthSync.svelte';
@@ -29,14 +31,23 @@
     }
   }
 
+  /** Pauses demandées pendant que l'appli était fermée : notées, puis les fausses du 21 novembre retirées. */
+  async function catchUpPauses() {
+    await recordPendingPauses();
+    const code = appVersion()?.code ?? null;
+    if (code == null) return;
+    await startJournal();
+    if (journal.profileId != null) await eraseFalsePauses(getDB(), journal.profileId, code);
+  }
+
   syncAlertConfig();
-  rememberGestureFix(appVersion()?.code ?? null);
   // Relevés de la bague et de la ceinture gardés par l'appli Android
   startHealthSync();
-  // Pauses demandées pendant que l'appli était fermée : notées dans le journal à l'ouverture
-  recordPendingPauses();
+  catchUpPauses().catch((e) => console.error(e));
   $effect(() => {
-    const onVisible = () => document.visibilityState === 'visible' && recordPendingPauses();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') catchUpPauses().catch((e) => console.error(e));
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   });

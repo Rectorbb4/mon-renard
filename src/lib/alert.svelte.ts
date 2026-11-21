@@ -133,17 +133,15 @@ export function snoozeAlert(): void {
  * Les pauses demandées avec le bouton ou la bague sont notées dans le journal (comme « je le sens »).
  * L'appli Android les garde de côté tant que la page n'est pas ouverte.
  */
-export function recordPendingPauses(): void {
+export async function recordPendingPauses(): Promise<void> {
   let raw = '';
   try {
     raw = pauseBridge()?.takePendingFelt() ?? '';
   } catch {
     return;
   }
-  for (const part of raw.split(',')) {
-    const at = Number(part);
-    if (Number.isFinite(at) && at > 0) feelIt(at).catch((e) => console.error(e));
-  }
+  const times = raw.split(',').map(Number).filter((at) => Number.isFinite(at) && at > 0);
+  await Promise.all(times.map((at) => feelIt(at).catch((e) => console.error(e))));
 }
 
 // ------------------------------------------------------------------ son et vibration (navigateur)
