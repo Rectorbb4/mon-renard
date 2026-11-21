@@ -298,6 +298,16 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
+    /** Le tapotement de la bague arrive comme une touche média : il ne doit pas changer de chanson ici. */
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        android.view.InputDevice device = e.getDevice();
+        String name = device != null ? device.getName() : null;
+        boolean down = e.getAction() == android.view.KeyEvent.ACTION_DOWN;
+        if (BleSensors.get(this).onRingKey(name, e.getKeyCode(), down, e.getRepeatCount())) return true;
+        return super.dispatchKeyEvent(e);
+    }
+
     // ------------------------------------------------------------------ son de l'alerte
 
     private static final int PICK_RINGTONE = 10;

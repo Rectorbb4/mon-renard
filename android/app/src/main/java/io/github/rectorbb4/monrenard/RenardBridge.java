@@ -127,11 +127,27 @@ public class RenardBridge {
         return BleSensors.get(activity).unknownPackets();
     }
 
+    /** Fait réagir la bague ; faux si elle n'est pas connectée. */
+    @JavascriptInterface
+    public boolean ringPing() {
+        BleSensors ble = BleSensors.get(activity);
+        if (!ble.ringReady()) return false;
+        activity.runOnUiThread(ble::blinkRing);
+        return true;
+    }
+
     /** Version d'essai seulement : comme deux appuis sur le bouton pause (tests automatiques). */
     @JavascriptInterface
     public void debugTrigger() {
         if (!BuildConfig.DEBUG) return;
         activity.runOnUiThread(() -> PulseAlert.get(activity).trigger(BleSensors.BUTTON));
+    }
+
+    /** Version d'essai seulement : un tapotement de la bague (touche média). */
+    @JavascriptInterface
+    public void debugRingKey(int keyCode) {
+        if (!BuildConfig.DEBUG) return;
+        activity.runOnUiThread(() -> BleSensors.get(activity).onRingKey("R03_TEST", keyCode, true, 0));
     }
 
     /** {ringing, bpm, at} de la dernière alerte. */

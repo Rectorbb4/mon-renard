@@ -24,10 +24,12 @@ final class ColmiProtocol {
     static final int CMD_MEASURE = 0x69;
     static final int CMD_MEASURE_STOP = 0x6a;
     /**
-     * Paquet « bouton / geste » (0x02) : Gadgetbridge le reçoit des bagues qui ont un bouton (H59).
-     * Pour le geste « photo » de la R03, c'est une supposition : à vérifier avec la vraie bague.
+     * Geste « photo » (un coup sec de la main) : il faut l'activer avec 02 04, puis chaque geste arrive
+     * en 02 02. Source : DavidWAbrahams/ha-colmi-ble (mesuré sur R02) ; à confirmer sur la R03.
      */
     static final int CMD_GESTURE = 0x02;
+    /** Fait clignoter la bague deux fois (même source). */
+    static final int CMD_BLINK = 0x10;
     /** Réponses connues : 0x03 batterie, 0x73 « nouvelles données à synchroniser ». */
     private static final int[] KNOWN = {CMD_REALTIME_HR, CMD_MEASURE, CMD_MEASURE_STOP, 0x03, 0x73};
 
@@ -41,7 +43,7 @@ final class ColmiProtocol {
     static final long FALLBACK_MS = 15_000;
 
     /** Noms Bluetooth des bagues compatibles (repris de Gadgetbridge). */
-    static final Pattern NAME = Pattern.compile("^(R02_|R03_|R06_|R09_|R10_|R11C?_|COLMI R07_|COLMI R10_|COLMI R12_).*");
+    static final Pattern NAME = Pattern.compile("^(COLMI )?R(02|03|06|07|09|10|11C?|12)_.*");
 
     static final String ERROR_WORN = "La bague est mal placée : capteurs côté paume, bien contre la peau.";
 
@@ -61,6 +63,18 @@ final class ColmiProtocol {
         }
         p[15] = (byte) (sum & 0xff);
         return p;
+    }
+
+    static byte[] gestureOn() {
+        return packet(CMD_GESTURE, 0x04);
+    }
+
+    static byte[] blink() {
+        return packet(CMD_BLINK);
+    }
+
+    static boolean isGesture(byte[] v) {
+        return v != null && v.length >= 2 && (v[0] & 0xff) == CMD_GESTURE && (v[1] & 0xff) == 0x02;
     }
 
     /** Pouls lu dans une notification (30-230), -1 s'il n'y en a pas, -2 si la bague est mal placée. */

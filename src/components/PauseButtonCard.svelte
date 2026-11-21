@@ -12,6 +12,7 @@
   let name = $state<string | null>(null);
   let error = $state<string | null>(null);
   let unknown = $state(readUnknown());
+  let ringMessage = $state<string | null>(null);
 
   function activeState(): string | null {
     try {
@@ -34,6 +35,7 @@
   $effect(() => {
     const onBle = (e: Event) => {
       const d = (e as CustomEvent).detail ?? {};
+      if (d.kind === 'bague') unknown = readUnknown();
       if (d.kind !== 'bouton') return;
       if (d.type === 'status') {
         status = d.state;
@@ -75,6 +77,16 @@
     }
     status = null;
   }
+
+  function pingRing() {
+    if (typeof b?.ringPing !== 'function') {
+      ringMessage = "Mets d'abord l'appli à jour (version 1.6, plus bas).";
+    } else if (b.ringPing()) {
+      ringMessage = 'Signal envoyé : regarde si la bague clignote ou vibre.';
+    } else {
+      ringMessage = "La bague n'est pas connectée : branche-la d'abord dans « En direct », sur l'accueil.";
+    }
+  }
 </script>
 
 <section class="card" aria-labelledby="pause-title">
@@ -109,22 +121,26 @@
 
     <div class="row">
       <div>
-        <p class="what">Geste de la bague · à l'essai</p>
+        <p class="what">Tapotement de la bague · à l'essai</p>
         <p class="hint">
-          Quand la bague est branchée (« En direct »), le geste qui prend les photos dans QRing devrait aussi demander une
-          pause. Pas encore vérifié avec ta bague : on saura au premier essai.
+          Dans QRing, mets « Sélection de geste » sur Musique, puis ferme QRing. Tapote deux fois la bague en moins de
+          2 secondes pour demander une pause. Pour l'instant, Mon renard doit être ouvert à l'écran.
         </p>
       </div>
+      <button type="button" class="ghost" onclick={pingRing}>Tester</button>
     </div>
+    {#if ringMessage}
+      <p class="hint" role="status">{ringMessage}</p>
+    {/if}
 
     {#if unknown.length}
       <details>
-        <summary>Messages inconnus de la bague (pour Claude)</summary>
+        <summary>Messages de la bague (pour Claude)</summary>
         <pre>{unknown.join('\n')}</pre>
       </details>
     {/if}
   {:else if inApp}
-    <p class="hint">Mets à jour l'appli (version 1.5, plus bas) pour utiliser le bouton pause.</p>
+    <p class="hint">Mets à jour l'appli (version 1.6, plus bas) pour utiliser le bouton pause.</p>
   {:else}
     <p class="hint">Seulement dans l'appli Android : elle seule peut rester connectée au bouton quand le téléphone est en veille.</p>
   {/if}

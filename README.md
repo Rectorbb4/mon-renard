@@ -136,7 +136,8 @@ et vibre fort**, puis un écran propose de respirer avec le renard (la séance d
 
 Contre l'impulsivité, **Repères → Bouton pause** : deux appuis sur un porte-clés Bluetooth « iTag » (service FFE0,
 appui notifié sur FFE1, « perte de lien » coupée pour qu'il ne bipe pas) demandent une pause sans sortir le téléphone.
-Le geste de la bague (paquet 0x02, supposé d'après Gadgetbridge, à vérifier) fait de même. `PulseAlert.trigger()`
+Le tapotement de la bague (mode « Musique » de QRing, reçu comme une touche média, appli ouverte pour l'instant) et
+son geste « photo » (activé par 02 04, reçu en 02 02) font de même, à vérifier sur la vraie bague. `PulseAlert.trigger()`
 vibre fort à toute heure et sonne seulement pendant les plages horaires. Il garde l'instant de côté
 (`takePendingFelt`), noté comme « je le sens » à l'ouverture de la page. L'écran affiche « Stop, on fait une pause ».
 Tant que le bouton est branché, le service de premier plan n'a pas de limite de durée. Appli Android 1.5 et plus

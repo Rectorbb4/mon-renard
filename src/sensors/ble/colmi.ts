@@ -21,7 +21,8 @@ export const CMD_MEASURE = 0x69;
 export const CMD_MEASURE_STOP = 0x6a;
 
 /** Débuts de nom Bluetooth des bagues compatibles (repris de Gadgetbridge). */
-export const COLMI_NAME_PREFIXES = ['R02_', 'R03_', 'R06_', 'R09_', 'R10_', 'R11_', 'R11C_', 'COLMI R07_', 'COLMI R10_', 'COLMI R12_'];
+const COLMI_MODELS = ['R02_', 'R03_', 'R06_', 'R07_', 'R09_', 'R10_', 'R11_', 'R11C_', 'R12_'];
+export const COLMI_NAME_PREFIXES = [...COLMI_MODELS, ...COLMI_MODELS.map((m) => `COLMI ${m}`)];
 
 /** La bague arrête le pouls en continu au bout de 60 s sans « continuer » : on le redit toutes les 25 s. */
 export const KEEP_ALIVE_MS = 25_000;

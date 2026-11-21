@@ -67,10 +67,9 @@ respirer. Ça marche appli fermée, toute la journée.
   plusieurs mois. Il se glisse dans une poche ou s'accroche à un bracelet. Son bouton envoie un message Bluetooth
   simple et connu (service FFE0), que l'appli lit directement. Ne **pas** prendre un AirTag, un Tile ni un Chipolo :
   leur protocole est fermé.
-- **Geste de la bague**, à l'essai : la R03 a un geste « appareil photo » dans QRing. L'appli considère qu'il envoie le
-  même message que le bouton des bagues qui en ont un (paquet 0x02, d'après Gadgetbridge). C'est une supposition, à
-  vérifier avec la vraie bague. Si ça ne marche pas, *Repères → Bouton pause* affiche les messages inconnus de la bague
-  pour corriger.
+- **Tapotement de la bague**, à l'essai : dans QRing, mettre *Sélection de geste* sur **Musique**, puis fermer QRing.
+  Deux tapotements en moins de 2 secondes demandent une pause, Mon renard ouvert à l'écran pour l'instant. Si rien ne
+  se passe, *Repères → Bouton pause* affiche les messages reçus de la bague pour corriger.
 
 Dans l'appli Android : *Repères → Bouton pause → Brancher*, puis appuyer une fois sur l'iTag pour le réveiller.
 L'iTag ne doit pas être connecté à une autre appli (iSearching…).
