@@ -6,7 +6,7 @@
     android:minHeight="110dp"
     android:minResizeWidth="80dp"
     android:minResizeHeight="80dp"
-    android:previewImage="@drawable/fox_equilibre_00"
+    android:previewImage="@drawable/fox_preview"
     android:previewLayout="@layout/widget_small"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="2"

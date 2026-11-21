@@ -76,34 +76,17 @@ public abstract class FoxWidget extends AppWidgetProvider {
         return "Il attend de tes nouvelles";
     }
 
-    /** Nombre de cases du ViewFlipper (res/layout/widget_fox.xml) : deux tours de la boucle de repos. */
-    static final int SLOTS = 32;
-
     /**
-     * Le renard animé : chaque case du ViewFlipper reçoit une image de la boucle de l'humeur.
-     * De jour, il cligne des yeux au second tour seulement ; la nuit, une boucle plus lente, yeux mi-clos.
-     * Images et vitesses sont fabriquées par tools/render-widget.mjs.
+     * Le renard animé : une boucle fluide par humeur, jouée par Android sans réveiller l'appli.
+     * La nuit, une boucle plus lente, yeux mi-clos. Les boucles sont fabriquées par tools/render-widget.mjs.
      */
     static void animate(Context ctx, RemoteViews v, String mood, boolean night) {
         Resources res = ctx.getResources();
         String pkg = ctx.getPackageName();
-        String m = mood != null && res.getIdentifier("fox_" + mood + "_ms", "integer", pkg) != 0 ? mood : "equilibre";
-        int frames = res.getInteger(R.integer.fox_frames);
-        int blinkAt = frames + res.getInteger(R.integer.fox_blink_at);
-        int nightFrames = res.getInteger(R.integer.fox_night_frames);
-        for (int i = 0; i < SLOTS; i++) {
-            int f = i % frames;
-            String name;
-            if (night) name = "fox_" + m + "_nuit_" + (f * nightFrames / frames);
-            else if (i == blinkAt) name = "fox_" + m + "_cligne_1";
-            else if (i == blinkAt + 1) name = "fox_" + m + "_cligne_2";
-            else name = String.format(Locale.ROOT, "fox_%s_%02d", m, f);
-            int slot = res.getIdentifier(String.format(Locale.ROOT, "f%02d", i), "id", pkg);
-            int image = res.getIdentifier(name, "drawable", pkg);
-            if (slot != 0 && image != 0) v.setImageViewResource(slot, image);
-        }
-        int ms = night ? res.getInteger(R.integer.fox_night_ms) : res.getInteger(res.getIdentifier("fox_" + m + "_ms", "integer", pkg));
-        v.setInt(R.id.fox, "setFlipInterval", ms);
+        String suffix = night ? "_nuit" : "";
+        int image = mood != null ? res.getIdentifier("fox_anim_" + mood + suffix, "drawable", pkg) : 0;
+        if (image == 0) image = res.getIdentifier("fox_anim_equilibre" + suffix, "drawable", pkg);
+        v.setImageViewResource(R.id.fox, image);
         v.setViewVisibility(R.id.zz, night ? View.VISIBLE : View.GONE);
     }
 
