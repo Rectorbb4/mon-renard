@@ -187,7 +187,18 @@ public class RenardBridge {
         android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
         for (int i = 0; i < seconds; i++) {
             int value = bpm + i / 2;
-            h.postDelayed(() -> BleSensors.get(activity).debugReading(value, 60_000 / value), i * 1000L);
+            h.postDelayed(() -> BleSensors.get(activity).debugReading(BleSensors.BELT, value, 60_000 / value), i * 1000L);
+        }
+    }
+
+    /** Version d'essai seulement : une mesure de bague par seconde, sans détail des battements. */
+    @JavascriptInterface
+    public void debugRingReadings(int bpm, int seconds) {
+        if (!BuildConfig.DEBUG) return;
+        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        for (int i = 0; i < seconds; i++) {
+            int value = bpm + i / 2;
+            h.postDelayed(() -> BleSensors.get(activity).debugReading(BleSensors.RING, value, 0), i * 1000L);
         }
     }
 

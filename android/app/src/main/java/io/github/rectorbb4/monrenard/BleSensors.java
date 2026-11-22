@@ -124,6 +124,8 @@ final class BleSensors {
     private int beltSum;
     private int beltCount;
     private final List<Integer> beltRr = new ArrayList<>();
+    private boolean ringLowBattery;
+    private boolean ringCharging;
 
     private BleSensors(Context ctx) {
         this.ctx = ctx;
@@ -511,11 +513,18 @@ final class BleSensors {
         if (r != null && "connected".equals(r.state)) r.write(ColmiProtocol.blink());
     }
 
-    /** Version d'essai : une mesure comme si elle venait de la ceinture. */
-    void debugReading(int bpm, int rr) {
+    /** Lue à chaque relevé : sous 15 %, la bague arrête le pouls continu et ne reprend qu'à 20 %. */
+    private void noteRingBattery(int level, boolean charging) {
+        ringCharging = charging;
+        if (level < ColmiProtocol.LOW_BATTERY) ringLowBattery = true;
+        else if (level >= ColmiProtocol.BATTERY_OK) ringLowBattery = false;
+    }
+
+    /** Version d'essai : une mesure comme si elle venait de ce capteur. */
+    void debugReading(String kind, int bpm, int rr) {
         List<Integer> beats = new ArrayList<>();
         if (rr > 0) beats.add(rr);
-        onHeartRate(BELT, bpm, beats);
+        onHeartRate(kind, bpm, beats);
     }
 
     private void onHeartRate(String kind, int bpm, List<Integer> rr) {
@@ -617,8 +626,14 @@ final class BleSensors {
             public void run() {
                 if (session == null || ended) return;
                 long now = System.currentTimeMillis();
-                // Le pouls en direct sert si la ceinture n'en donne pas, et si quelqu'un le regarde ou l'alerte l'attend
-                boolean want = now - lastBeltHr >= BELT_ACTIVE_MS && (PulseAlert.appVisible || PulseAlert.get(ctx).isEnabled());
+                // Sans ceinture, la bague donne le pouls : à l'écran, pour l'alerte, et pour les secondes autour d'une pause
+                boolean want = ColmiProtocol.wantsLive(
+                        now - lastBeltHr < BELT_ACTIVE_MS,
+                        PulseAlert.appVisible || PulseAlert.get(ctx).isEnabled(),
+                        ringGestureOn(),
+                        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY),
+                        ringLowBattery,
+                        ringCharging);
                 if (want != session.measuring()) for (byte[] p : want ? session.start(now) : session.stop()) write(p);
                 for (byte[] p : session.tick(now)) write(p);
                 if (now - lastSync >= SYNC_EVERY) startSync(now);
@@ -1164,6 +1179,7 @@ final class BleSensors {
                 if (!ColmiProtocol.NOTIFY.equals(id)) return;
                 // Geste de la bague (celui qui prend les photos dans QRing) : marche aussi appli fermée
                 if (onRingMessage(v, now)) return;
+                if ((v[0] & 0xff) == 0x03 && v.length >= 3 && (v[1] & 0xff) <= 100) noteRingBattery(v[1] & 0xff, v[2] == 1);
                 if (sync != null && sync.onV1(v)) return;
                 onUnknownMessage(v);
                 if (session == null) return;

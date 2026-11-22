@@ -172,6 +172,7 @@
       {#if single.note}<p class="quote">« {single.note} »</p>{/if}
       <dl class="facts">
         {#if single.capture?.hr.length}
+          <div><dt>Mesuré par</dt><dd>{single.capture.source === 'bague' ? 'la bague, approximatif' : 'la ceinture'}</dd></div>
           <div><dt>Pouls avant</dt><dd>{bpm(stats.before)}</dd></div>
           <div><dt>Pouls après</dt><dd>{bpm(stats.after)}</dd></div>
         {/if}

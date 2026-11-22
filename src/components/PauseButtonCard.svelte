@@ -123,6 +123,12 @@
             Activé. Tapote au moins 3 fois en 3 secondes : le téléphone vibre, sonne pendant tes plages horaires, puis te
             demande si c'est une erreur et comment tu te sens.
           </p>
+          {#if (appVersion()?.code ?? 0) >= 16}
+            <p class="hint">
+              Sans la ceinture, la bague mesure ton pouls en continu de 7 h à 23 h pour garder les secondes autour de
+              chaque pause. Sa batterie se vide plus vite, et la mesure s'arrête sous 15 %.
+            </p>
+          {/if}
         {:else}
           <p class="hint">Désactivé : tes tapotements ne lancent aucune pause.</p>
         {/if}

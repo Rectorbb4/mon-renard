@@ -9,6 +9,8 @@ import { addDays, startOfDay } from './history';
 
 /** En dessous de cet écart, le pouls est considéré comme stable (il varie déjà avec la respiration). */
 export const DRIFT_BPM = 4;
+/** La bague est moins précise que la ceinture : il faut un écart plus net pour parler de changement. */
+export const RING_DRIFT_BPM = 6;
 /** Nombre de moments mesurés avant de dire quoi que ce soit de général. */
 export const PATTERN_MIN = 5;
 
@@ -35,8 +37,8 @@ export interface MomentStats {
 }
 
 export function momentStats(c: MomentCapture): MomentStats {
-  const early = meanIn(c.hr, -10_000, -7_000, 2);
-  const late = meanIn(c.hr, -3_000, 0, 2);
+  const early = meanIn(c.hr, -10_000, -7_000);
+  const late = meanIn(c.hr, -3_000, 0);
   const beats = (from: number, to: number) => c.rr.filter(([t]) => t >= from && t < to).map(([, v]) => v);
   return {
     before: meanIn(c.hr, -10_000, 0),
@@ -58,10 +60,13 @@ export interface MomentPattern {
 }
 
 export function momentPattern(list: MomentCapture[]): MomentPattern {
-  const drifts = list.map((c) => momentStats(c).drift).filter((d): d is number => d != null);
-  const rising = drifts.filter((d) => d >= DRIFT_BPM).length;
-  const falling = drifts.filter((d) => d <= -DRIFT_BPM).length;
-  return { count: drifts.length, rising, falling, steady: drifts.length - rising - falling, drift: median(drifts) };
+  const read = list.flatMap((c) => {
+    const drift = momentStats(c).drift;
+    return drift == null ? [] : [{ drift, least: c.source === 'bague' ? RING_DRIFT_BPM : DRIFT_BPM }];
+  });
+  const rising = read.filter((r) => r.drift >= r.least).length;
+  const falling = read.filter((r) => r.drift <= -r.least).length;
+  return { count: read.length, rising, falling, steady: read.length - rising - falling, drift: median(read.map((r) => r.drift)) };
 }
 
 export function patternText(p: MomentPattern): string {

@@ -47,6 +47,17 @@ describe('momentPattern', () => {
     expect(p).toMatchObject({ count: 4, rising: 2, falling: 1, steady: 1 });
   });
 
+  it('demande un écart plus net à la bague qu’à la ceinture', () => {
+    const rise = (t: number) => 90 + t * 0.7;
+    expect(momentPattern([capture(rise)]).rising).toBe(1);
+    expect(momentPattern([{ ...capture(rise), source: 'bague' }])).toMatchObject({ rising: 0, steady: 1 });
+  });
+
+  it('lit une bague qui donne peu de mesures', () => {
+    const c: MomentCapture = { start: 1, source: 'bague', hr: [[-9000, 80], [-5000, 84], [-1000, 90], [4000, 95]], rr: [] };
+    expect(momentStats(c).drift).toBe(10);
+  });
+
   it('ne dit rien de général avant cinq moments', () => {
     expect(patternText(momentPattern([capture(() => 70)]))).toContain('Encore 4 moments');
     const five = Array.from({ length: 5 }, () => capture((t) => 90 + t));

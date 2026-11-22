@@ -58,6 +58,26 @@ final class ColmiProtocol {
     static final long KEEP_ALIVE_MS = 25_000;
     /** Sans pouls depuis ce délai, on relance la mesure. */
     static final long RESTART_MS = 10_000;
+    /** Plus aucun pouls depuis ce délai (bague posée, mal placée) : on réessaie rarement, pour sa batterie. */
+    static final long LOST_MS = 90_000;
+    static final long LOST_RETRY_MS = 2 * 60_000;
+    /** La LED verte ne reste pas allumée la nuit : elle gênerait le sommeil et viderait la bague. */
+    static final int NIGHT_FROM = 23;
+    static final int NIGHT_TO = 7;
+    /** En dessous, la bague garde sa batterie pour pouvoir toujours lancer une pause. */
+    static final int LOW_BATTERY = 15;
+    static final int BATTERY_OK = 20;
+
+    /**
+     * La bague doit-elle mesurer le pouls en direct ? Jamais si la ceinture le donne déjà. Toujours si on le regarde
+     * ou si l'alerte l'attend. Pour garder les secondes autour d'une pause : de jour, si sa batterie le permet.
+     */
+    static boolean wantsLive(boolean beltActive, boolean watched, boolean pauseOn, int hour, boolean lowBattery, boolean charging) {
+        if (beltActive) return false;
+        if (watched) return true;
+        if (!pauseOn || lowBattery || charging) return false;
+        return hour >= NIGHT_TO && hour < NIGHT_FROM;
+    }
 
     /** Noms Bluetooth des bagues compatibles (repris de Gadgetbridge). */
     static final Pattern NAME = Pattern.compile("^(COLMI )?R(02|03|06|07|09|10|11C?|12)_.*");
@@ -149,7 +169,8 @@ final class ColmiProtocol {
         /** Appelé chaque seconde. */
         List<byte[]> tick(long now) {
             List<byte[]> out = new ArrayList<>();
-            if (!measuring || now - lastKeepAlive < KEEP_ALIVE_MS) return out;
+            long every = now - lastHrAt > LOST_MS ? LOST_RETRY_MS : KEEP_ALIVE_MS;
+            if (!measuring || now - lastKeepAlive < every) return out;
             lastKeepAlive = now;
             out.add(packet(CMD_REALTIME_HR, 0x33));
             if (now - lastHrAt > RESTART_MS) out.add(packet(CMD_MEASURE, 1, 1));

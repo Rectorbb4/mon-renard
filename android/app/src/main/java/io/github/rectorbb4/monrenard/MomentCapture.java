@@ -48,8 +48,6 @@ final class MomentCapture {
         final long start;
         final List<long[]> hr = new ArrayList<>();
         final List<long[]> rr = new ArrayList<>();
-        boolean belt;
-        boolean ring;
         boolean done;
 
         Pending(long at, long start) {
@@ -67,8 +65,6 @@ final class MomentCapture {
     private final ArrayDeque<long[]> hrMemory = new ArrayDeque<>();
     private final ArrayDeque<long[]> rrMemory = new ArrayDeque<>();
     private final List<Pending> pending = new ArrayList<>();
-    private long lastBelt;
-    private long lastRing;
     private Listener listener;
 
     private MomentCapture(Context ctx) {
@@ -81,10 +77,8 @@ final class MomentCapture {
 
     /** Une mesure retenue par {@link BleSensors} (ceinture prioritaire sur la bague). */
     void onReading(String kind, int bpm, List<Integer> rr, long now) {
-        boolean belt = BleSensors.BELT.equals(kind);
-        if (belt) lastBelt = now;
-        else lastRing = now;
-        long[] h = {now, bpm};
+        // Troisième case : 1 si la mesure vient de la ceinture
+        long[] h = {now, bpm, BleSensors.BELT.equals(kind) ? 1 : 0};
         hrMemory.addLast(h);
         List<long[]> beats = beatsOf(rr, now);
         rrMemory.addAll(beats);
@@ -92,11 +86,7 @@ final class MomentCapture {
         while (!rrMemory.isEmpty() && now - rrMemory.peekFirst()[0] > KEEP_MS) rrMemory.removeFirst();
 
         for (Pending p : new ArrayList<>(pending)) {
-            if (p.covers(now)) {
-                p.hr.add(h);
-                if (belt) p.belt = true;
-                else p.ring = true;
-            }
+            if (p.covers(now)) p.hr.add(h);
             for (long[] b : beats) if (p.covers(b[0])) p.rr.add(b);
             if (now > p.start + AFTER_MS) finish(p);
         }
@@ -120,8 +110,6 @@ final class MomentCapture {
         Pending p = new Pending(at, Math.min(at, start));
         for (long[] h : hrMemory) if (p.covers(h[0])) p.hr.add(h);
         for (long[] b : rrMemory) if (p.covers(b[0])) p.rr.add(b);
-        p.belt = at - lastBelt <= KEEP_MS && lastBelt > 0;
-        p.ring = at - lastRing <= KEEP_MS && lastRing > 0;
         pending.add(p);
         main.postDelayed(() -> finish(p), Math.max(0, p.start + AFTER_MS - at) + FINISH_GRACE_MS);
     }
@@ -132,7 +120,10 @@ final class MomentCapture {
         pending.remove(p);
         try {
             JSONObject o = new JSONObject().put("at", p.at).put("start", p.start);
-            if (!p.hr.isEmpty()) o.put("src", p.belt ? BleSensors.BELT : BleSensors.RING);
+            int fromBelt = 0;
+            for (long[] h : p.hr) fromBelt += (int) h[2];
+            // La ceinture a pu être retirée pendant la fenêtre : on nomme celui qui a donné le plus de mesures
+            if (!p.hr.isEmpty()) o.put("src", fromBelt * 2 >= p.hr.size() ? BleSensors.BELT : BleSensors.RING);
             o.put("hr", relative(p.hr, p.start));
             o.put("rr", relative(p.rr, p.start));
             append(ctx, o.toString());
