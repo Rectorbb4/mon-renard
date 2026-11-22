@@ -2,7 +2,7 @@
 
 import type { RenardDB } from './db';
 import { parseReply, type Parsed, type RingReply } from './ringParse';
-import type { HealthMetric, HealthSample, SleepNight } from './types';
+import type { HealthMetric, HealthSample, SleepNight, WakeNote } from './types';
 
 export interface IngestResult {
   samples: number;
@@ -55,4 +55,16 @@ export function samplesBetween(db: RenardDB, metric: HealthMetric, from: number,
 
 export function nightsBetween(db: RenardDB, from: number, to: number): Promise<SleepNight[]> {
   return db.nights.where('night').between(from, to, true, false).toArray();
+}
+
+/** Les réveils corrigés à la main, par nuit. */
+export async function wakesBetween(db: RenardDB, from: number, to: number): Promise<Map<number, number>> {
+  const list: WakeNote[] = await db.wakes.where('night').between(from, to, true, false).toArray();
+  return new Map(list.map((w) => [w.night, w.at]));
+}
+
+/** Note ton heure de réveil pour cette nuit ; `null` revient à celle repérée par l'appli. */
+export async function setWake(db: RenardDB, night: number, at: number | null): Promise<void> {
+  if (at == null) await db.wakes.delete(night);
+  else await db.wakes.put({ night, at });
 }

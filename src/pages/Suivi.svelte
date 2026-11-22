@@ -6,12 +6,13 @@
   import { fitNights } from '../lib/dayDetail';
   import FourWeeks from '../components/FourWeeks.svelte';
   import MomentsCard from '../components/MomentsCard.svelte';
+  import RhythmCard from '../components/RhythmCard.svelte';
   import Terrier from '../components/Terrier.svelte';
   import TrendChart from '../components/TrendChart.svelte';
   import { checkInsBetween } from '../data/checkins';
   import { getDB } from '../data/db';
   import { feltEventsBetween } from '../data/events';
-  import { nightsBetween, samplesBetween } from '../data/health';
+  import { nightsBetween, samplesBetween, setWake, wakesBetween } from '../data/health';
   import type { CheckIn, FeltEvent, HealthMetric, HealthSample, SleepNight } from '../data/types';
   import {
     baseline,
@@ -29,6 +30,7 @@
   import { addDays, dayLabel, startOfDay } from '../lib/history';
   import { isAndroidApp } from '../lib/android';
   import { journal, startJournal } from '../lib/journal.svelte';
+  import { rhythm } from '../lib/rhythm';
   import { hrefFor } from '../lib/router';
 
   const LOADED_DAYS = 120;
@@ -39,6 +41,8 @@
     nights: SleepNight[];
     checkins: CheckIn[];
     events: FeltEvent[];
+    /** Les réveils que tu as corrigés, par nuit. */
+    wakes: Map<number, number>;
   }
 
   let now = $state(Date.now());
@@ -60,14 +64,15 @@
       const from = addDays(day, -LOADED_DAYS);
       const to = addDays(day, 1);
       const profileId = journal.profileId;
-      const [lists, nights, checkins, events] = await Promise.all([
+      const [lists, nights, checkins, events, wakes] = await Promise.all([
         Promise.all(DAILY.map((m) => samplesBetween(db, m, from, to))),
         nightsBetween(db, from, to),
         profileId != null ? checkInsBetween(db, profileId, from, to) : Promise.resolve([]),
-        profileId != null ? feltEventsBetween(db, profileId, from, to) : Promise.resolve([])
+        profileId != null ? feltEventsBetween(db, profileId, from, to) : Promise.resolve([]),
+        wakesBetween(db, from, to)
       ]);
       if (mine !== ticket) return;
-      loaded = { samples: lists.flat(), nights, checkins, events };
+      loaded = { samples: lists.flat(), nights, checkins, events, wakes };
       failed = false;
     } catch (e) {
       console.error(e);
@@ -80,6 +85,11 @@
     const day = today;
     untrack(() => void load(day));
   });
+
+  async function saveWake(nightDay: number, at: number | null) {
+    await setWake(getDB(), nightDay, at);
+    await load(today);
+  }
 
   $effect(() => {
     void ringSync.revision;
@@ -110,7 +120,7 @@
   /** Ajusté à ta vraie journée, ou les chiffres de la bague tels quels pour comparer avec QRing. */
   let source = $state<'ajuste' | 'bague'>('ajuste');
   const adjusted = $derived(source === 'ajuste');
-  const fitted = $derived(loaded ? fitNights(loaded.nights, loaded.samples) : []);
+  const fitted = $derived(loaded ? fitNights(loaded.nights, loaded.samples, loaded.wakes) : []);
   const shownNights = $derived(adjusted ? fitted.map((f) => f.night) : (loaded?.nights ?? []));
 
   const days = $derived(
@@ -271,7 +281,12 @@
   const inApp = isAndroidApp();
   const canSync = canSyncRing();
 
-  const allSignals = $derived(signals(days));
+  const pace = $derived(rhythm(days));
+  // Ces trois-là sont déjà dits, avec tes chiffres, par la carte de ton rythme
+  const IN_RHYTHM = new Set(['court-haut', 'court', 'long-bas']);
+  const allSignals = $derived(
+    signals(days).filter((s) => !(adjusted && pace.kind !== 'learning' && IN_RHYTHM.has(s.id)))
+  );
   const links = $derived(relations(days.slice(-60)));
   const measuredDays = $derived(days.filter((d) => d.sleep != null || d.restHr != null || d.steps != null).length);
   const linkedDays = $derived(days.slice(-60).filter((d) => d.mood != null && (d.sleep != null || d.steps != null)).length);
@@ -298,7 +313,7 @@
       </div>
       <p>
         {adjusted
-          ? 'Ta nuit s’arrête à ton vrai réveil, repéré à ton pouls.'
+          ? 'Ta nuit s’arrête à ton vrai réveil, repéré à ton pouls ou noté par toi.'
           : 'Les chiffres de la bague, sans correction, pour comparer avec QRing.'}
       </p>
     </div>
@@ -372,7 +387,7 @@
   {/if}
 
   {#if loaded && hasMeasures}
-    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} />
+    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} onwake={saveWake} />
   {/if}
 
   {#if loaded}
@@ -439,6 +454,9 @@
 
     <section aria-labelledby="regarder">
       <h2 id="regarder">À regarder</h2>
+      {#if adjusted}
+        <RhythmCard value={pace} />
+      {/if}
       {#if allSignals.length}
         <ul class="signals">
           {#each allSignals as s (s.id)}
@@ -448,12 +466,12 @@
             </li>
           {/each}
         </ul>
-      {:else if measuredDays < 8}
+      {:else if !adjusted && measuredDays < 8}
         <p class="calm">
           Ton renard apprend ton rythme. Encore {8 - measuredDays}
           {8 - measuredDays > 1 ? 'jours' : 'jour'} de port pour comparer tes mesures à ton habitude.
         </p>
-      {:else}
+      {:else if !adjusted}
         <p class="calm">Rien ne s'écarte de ton habitude ces derniers jours.</p>
       {/if}
     </section>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HealthSample, SleepNight, SleepStage } from '../data/types';
-import { dayActivity, dayHeart, dayMetric, fitNight, fitNights, formatKm, HRV_ZONES, nightDetail, SPO2_ZONES, STRESS_ZONES, zonesOf } from './dayDetail';
+import { dayActivity, dayHeart, dayMetric, fitNight, fitNights, formatKm, HRV_ZONES, nightDetail, SPO2_ZONES, STRESS_ZONES, wakeFromClock, zonesOf } from './dayDetail';
 import { formatDuration, stageMinutes } from './healthDays';
 import { startOfDay } from './history';
 
@@ -124,6 +124,34 @@ describe('le réveil d’après le pouls', () => {
   it('ne dit rien sans pic de pouls ni assez de mesures', () => {
     expect(fitNight(night(withWake), pulse(sleeping)).wake).toBeNull();
     expect(fitNight(night(withWake), pulse(morning).slice(-10)).wake).toBeNull();
+  });
+
+  it('prend ton heure à toi plutôt que celle du pouls', () => {
+    const f = fitNight(night(withWake), pulse(morning), at(22, 7, 15));
+    expect(f.wake).toMatchObject({ at: at(22, 7, 15), manual: true, lingered: 41 });
+    expect(f.night.end).toBe(at(22, 7, 15));
+  });
+
+  it('accepte ton heure même sans réveil repéré', () => {
+    expect(fitNight(night(withWake), pulse(sleeping), at(22, 7, 30)).wake?.manual).toBe(true);
+  });
+
+  it('retrouve ton heure pour la bonne nuit, parmi plusieurs', () => {
+    const [one] = fitNights([night(withWake)], pulse(morning), new Map([[DAY, at(22, 7, 15)]]));
+    expect(one.wake?.at).toBe(at(22, 7, 15));
+  });
+
+  it('ignore une heure en dehors de la nuit', () => {
+    expect(fitNight(night(withWake), pulse(morning), at(22, 9, 0)).wake?.manual).toBeUndefined();
+  });
+
+  it('lit une heure dans la nuit, avant ou après minuit', () => {
+    const n = night(withWake);
+    expect(wakeFromClock(n, '07:15')).toBe(at(22, 7, 15));
+    expect(wakeFromClock(n, '23:30')).toBe(at(21, 23, 30));
+    expect(wakeFromClock(n, '07:56')).toBe(END);
+    expect(wakeFromClock(n, '12:00')).toBeNull();
+    expect(wakeFromClock(n, 'matin')).toBeNull();
   });
 });
 

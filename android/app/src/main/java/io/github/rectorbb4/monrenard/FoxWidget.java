@@ -80,14 +80,15 @@ public abstract class FoxWidget extends AppWidgetProvider {
      * Le renard animé : une boucle fluide par humeur, jouée par Android sans réveiller l'appli.
      * La nuit, une boucle plus lente, yeux mi-clos. Les boucles sont fabriquées par tools/render-widget.mjs.
      */
-    static void animate(Context ctx, RemoteViews v, String mood, boolean night) {
+    static void animate(Context ctx, RemoteViews v, String mood, boolean night, boolean agitated) {
         Resources res = ctx.getResources();
         String pkg = ctx.getPackageName();
-        String suffix = night ? "_nuit" : "";
+        // Le pouls qui monte le réveille, même la nuit ; son humeur ne change pas
+        String suffix = agitated ? "_agite" : night ? "_nuit" : "";
         int image = mood != null ? res.getIdentifier("fox_anim_" + mood + suffix, "drawable", pkg) : 0;
         if (image == 0) image = res.getIdentifier("fox_anim_equilibre" + suffix, "drawable", pkg);
         v.setImageViewResource(R.id.fox, image);
-        v.setViewVisibility(R.id.zz, night ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.zz, night && !agitated ? View.VISIBLE : View.GONE);
     }
 
     static RemoteViews build(Context ctx, boolean large, long now) {
@@ -96,8 +97,9 @@ public abstract class FoxWidget extends AppWidgetProvider {
         String label = s.mood != null && s.label != null && !s.label.isEmpty() ? s.label : "Ton renard";
 
         RemoteViews v = new RemoteViews(ctx.getPackageName(), large ? R.layout.widget_large : R.layout.widget_small);
-        animate(ctx, v, s.mood, night);
-        v.setContentDescription(R.id.fox, "Ton renard. Humeur : " + label);
+        boolean agitated = s.agitated && s.liveBpm(now) > 0;
+        animate(ctx, v, s.mood, night, agitated);
+        v.setContentDescription(R.id.fox, "Ton renard. Humeur : " + label + (agitated ? ". Il sent ton pouls monter." : ""));
         v.setTextViewText(R.id.mood, label);
         v.setOnClickPendingIntent(android.R.id.background, open(ctx, null));
         heart(v, s, now);
@@ -144,7 +146,10 @@ public abstract class FoxWidget extends AppWidgetProvider {
             v.setColorStateList(R.id.g_energy, "setProgressTintList", ColorStateList.valueOf(ctx.getColor(stale ? R.color.gauge_stale : R.color.energy)));
             v.setColorStateList(R.id.g_sleep, "setProgressTintList", ColorStateList.valueOf(ctx.getColor(stale ? R.color.gauge_stale : R.color.sleep)));
         }
-        String sleepWord = sleepToday ? sleepLabel(s.sleep) : "pas notée";
+        // Une nuit mesurée se dit en durée : la bague ne juge pas de sa qualité
+        String sleepWord = !sleepToday ? "pas notée"
+                : s.sleepMinutes > 0 ? (s.sleepMinutes / 60) + " heures " + (s.sleepMinutes % 60)
+                : sleepLabel(s.sleep);
         v.setContentDescription(R.id.gauges, "Humeur " + s.label + ", énergie " + energyLabel(s.energy) + ", nuit " + sleepWord
                 + (stale ? ". Dernier check-in il y a plus de 12 heures." : ""));
     }

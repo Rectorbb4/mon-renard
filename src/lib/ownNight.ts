@@ -2,7 +2,7 @@
 // Elle se lit par rapport à tes propres nuits, pas à une norme.
 
 import type { RenardDB } from '../data/db';
-import { nightsBetween, samplesBetween } from '../data/health';
+import { nightsBetween, samplesBetween, wakesBetween } from '../data/health';
 import { fitNights, median, type FittedNight } from './dayDetail';
 import { stageMinutes } from './healthDays';
 import { addDays, startOfDay } from './history';
@@ -41,9 +41,11 @@ export function ownNight(fitted: FittedNight[], now = Date.now()): OwnNight | nu
 /** Relit la nuit de ce matin et les deux semaines d'avant. */
 export async function readOwnNight(db: RenardDB, now = Date.now()): Promise<OwnNight | null> {
   const today = startOfDay(now);
-  const nights = await nightsBetween(db, addDays(today, -LOOKBACK_DAYS), addDays(today, 1));
+  const first = addDays(today, -LOOKBACK_DAYS);
+  const nights = await nightsBetween(db, first, addDays(today, 1));
   if (!nights.some((n) => n.night === today)) return null;
   const from = Math.min(...nights.map((n) => n.start));
   const to = Math.max(...nights.map((n) => n.end)) + 1;
-  return ownNight(fitNights(nights, await samplesBetween(db, 'hr', from, to)), now);
+  const [hr, noted] = await Promise.all([samplesBetween(db, 'hr', from, to), wakesBetween(db, first, addDays(today, 1))]);
+  return ownNight(fitNights(nights, hr, noted), now);
 }

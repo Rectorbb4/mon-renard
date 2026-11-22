@@ -18,6 +18,7 @@
   import { backupDue, lastBackupAt } from '../lib/backupReminder';
   import { install, promptInstall } from '../lib/install.svelte';
   import { feelIt, journal, startJournal } from '../lib/journal.svelte';
+  import { lockScreen } from '../lib/lockScreen.svelte';
   import { hrefFor } from '../lib/router';
   import { formatSince } from '../lib/time';
 
@@ -148,13 +149,17 @@
     thanks = false;
     feltMessage = null;
     breathing = true;
+    lockScreen.breathShown = lockScreen.breathing;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function closeBreath(next: 'checkin' | null) {
     breathing = false;
     guide = null;
-    if (next === 'checkin') openCheckIn();
+    lockScreen.breathing = false;
+    lockScreen.breathShown = false;
+    // Sur l'écran verrouillé, le journal reste fermé
+    if (next === 'checkin' && !lockScreen.over) openCheckIn();
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -162,6 +167,8 @@
   function runAction(action: AppAction) {
     if (action === 'breathe') return openBreath(true);
     breathing = false;
+    lockScreen.breathing = false;
+    lockScreen.breathShown = false;
     guide = null;
     window.scrollTo({ top: 0 });
     if (action === 'feel') {

@@ -3,6 +3,7 @@
   // Pause lancée par la bague : d'abord « est-ce une erreur ? », puis comment on se sent, puis la suite de la pause.
   import { alarm, erasePause, notePause, silence, snoozeAlert } from '../lib/alert.svelte';
   import { requestAction } from '../lib/appAction.svelte';
+  import { lockScreen } from '../lib/lockScreen.svelte';
   import { PAUSE_FEELINGS, pauseNote, type PauseFeeling } from '../lib/pauseCheck';
   import { hrefFor, parseRoute } from '../lib/router';
 
@@ -25,6 +26,8 @@
   });
 
   function breathe() {
+    // Sur l'écran verrouillé, seule la respiration reste visible après la pause
+    lockScreen.breathing = lockScreen.over;
     silence();
     requestAction('breathe');
     if (parseRoute(location.hash) !== 'accueil') location.hash = hrefFor('accueil');

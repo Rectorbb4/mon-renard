@@ -28,6 +28,10 @@ final class WidgetState {
     final int liveBpm;
     final boolean liveSimulated;
     final long liveAt;
+    /** Minutes de la nuit ajustée quand elle n'a pas été notée (0 sinon). */
+    final int sleepMinutes;
+    /** Le pouls monte : le renard s'agite, sans changer d'humeur. */
+    final boolean agitated;
 
     private WidgetState(SharedPreferences p) {
         String m = p.getString("mood", null);
@@ -42,6 +46,8 @@ final class WidgetState {
         liveBpm = p.getInt("liveBpm", 0);
         liveSimulated = p.getBoolean("liveSimulated", false);
         liveAt = p.getLong("liveAt", 0);
+        sleepMinutes = p.getInt("sleepMinutes", 0);
+        agitated = p.getBoolean("agitated", false);
     }
 
     private static SharedPreferences prefs(Context ctx) {
@@ -73,6 +79,7 @@ final class WidgetState {
                     .putFloat("energy", bounded(o.optDouble("energy", 0), 0, 1))
                     .putFloat("sleep", bounded(o.optDouble("sleep", 0), 0, 1))
                     .putLong("sleepAt", Math.max(0, o.optLong("sleepAt", 0)))
+                    .putInt("sleepMinutes", Math.max(0, Math.min(1440, o.optInt("sleepMinutes", 0))))
                     .apply();
         } catch (Exception ignored) {
             // Message illisible : on garde l'état précédent
@@ -87,6 +94,10 @@ final class WidgetState {
                 .putBoolean("liveSimulated", value > 0 && simulated)
                 .putLong("liveAt", value > 0 ? System.currentTimeMillis() : 0)
                 .apply();
+    }
+
+    static void saveAgitated(Context ctx, boolean on) {
+        prefs(ctx).edit().putBoolean("agitated", on).apply();
     }
 
     /** Le pouls à afficher maintenant, ou 0. */

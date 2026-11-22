@@ -11,6 +11,7 @@
     SPO2_ZONES,
     STAGE_NAMES,
     STRESS_ZONES,
+    wakeFromClock,
     zonesOf,
     type WakeEstimate,
     type ZoneDef
@@ -28,9 +29,52 @@
     wake: WakeEstimate | null;
     adjusted: boolean;
     samples: HealthSample[];
+    /** Enregistre ton heure de réveil ; `null` revient à celle repérée par l'appli. */
+    onwake: (night: number, at: number | null) => Promise<void>;
   }
 
-  let { day, night, ringNight, wake, adjusted, samples }: Props = $props();
+  let { day, night, ringNight, wake, adjusted, samples, onwake }: Props = $props();
+
+  // Ton heure de réveil, si l'appli s'est trompée
+  let editingWake = $state(false);
+  let wakeInput = $state('');
+  let wakeError = $state<string | null>(null);
+
+  $effect(() => {
+    void day;
+    editingWake = false;
+    wakeError = null;
+  });
+
+  function startWakeEdit() {
+    if (!ringNight) return;
+    wakeInput = clock.format(wake?.at ?? ringNight.end);
+    wakeError = null;
+    editingWake = true;
+  }
+
+  async function saveWake(e: SubmitEvent) {
+    e.preventDefault();
+    if (!ringNight) return;
+    const at = wakeFromClock(ringNight, wakeInput);
+    if (at == null) {
+      wakeError = `Choisis une heure entre ${clock.format(ringNight.start)} et ${clock.format(ringNight.end)}.`;
+      return;
+    }
+    await storeWake(at);
+  }
+
+  async function storeWake(at: number | null) {
+    if (!ringNight) return;
+    try {
+      await onwake(ringNight.night, at);
+      editingWake = false;
+      wakeError = null;
+    } catch (err) {
+      console.error(err);
+      wakeError = "Ton heure de réveil n'a pas pu être enregistrée. Réessaie.";
+    }
+  }
 
   const ringAsleep = $derived(ringNight ? stageMinutes(ringNight).asleep : null);
   const inBed = $derived(ringNight ? Math.round((ringNight.end - ringNight.start) / 60_000) : null);
@@ -156,13 +200,36 @@
         </p>
       </div>
 
-      {#if adjusted && wake}
-        <p class="wake">
-          <strong>Réveil vers {clock.format(wake.at)}, repéré à ton pouls.</strong>
-          Les {formatDuration(wake.lingered)} suivantes ne comptent plus comme du sommeil. La bague indique {formatDuration(ringAsleep)}.
-        </p>
-      {:else if adjusted}
-        <p class="wake">Pas de réveil plus tôt repéré cette nuit : mêmes chiffres que la bague.</p>
+      {#if adjusted}
+        <div class="wake">
+          {#if wake}
+            <p>
+              <strong>{wake.manual ? `Réveil à ${clock.format(wake.at)}, noté par toi.` : `Réveil vers ${clock.format(wake.at)}, repéré à ton pouls.`}</strong>
+              {#if wake.lingered > 0}Les {formatDuration(wake.lingered)} suivantes ne comptent plus comme du sommeil.{/if}
+              La bague indique {formatDuration(ringAsleep)}.
+            </p>
+          {:else}
+            <p>Pas de réveil plus tôt repéré cette nuit : mêmes chiffres que la bague.</p>
+          {/if}
+          {#if editingWake}
+            <form class="wake-form" onsubmit={saveWake}>
+              <label for="wake-time">Ton heure de réveil</label>
+              <input id="wake-time" type="time" bind:value={wakeInput} required />
+              <button type="submit" class="wake-save">Enregistrer</button>
+              <button type="button" class="wake-link" onclick={() => (editingWake = false)}>Annuler</button>
+            </form>
+          {:else}
+            <div class="wake-actions">
+              <button type="button" class="wake-link" onclick={startWakeEdit}>{wake ? "Corriger l'heure" : 'Indiquer mon réveil'}</button>
+              {#if wake?.manual}
+                <button type="button" class="wake-link" onclick={() => storeWake(null)}>Reprendre l'heure repérée</button>
+              {/if}
+            </div>
+          {/if}
+          {#if wakeError}
+            <p class="wake-error" role="alert">{wakeError}</p>
+          {/if}
+        </div>
       {/if}
 
       <figure class="phases">
@@ -413,6 +480,8 @@
   }
 
   .wake {
+    display: grid;
+    gap: 6px;
     padding: 10px 12px;
     border-radius: 10px;
     background: var(--surface-2);
@@ -424,6 +493,68 @@
   .wake strong {
     display: block;
     color: var(--fg);
+  }
+
+  .wake-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 16px;
+  }
+
+  .wake-link {
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .wake-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px 10px;
+    margin-top: 2px;
+  }
+
+  .wake-form label {
+    grid-column: 1 / -1;
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .wake-form input {
+    grid-column: 1 / -1;
+    min-height: 48px;
+    padding: 0 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 18px;
+  }
+
+  .wake-save {
+    min-height: 44px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .wake-error {
+    color: var(--urgent);
+    font-weight: 700;
   }
 
   .phases rect.dim {

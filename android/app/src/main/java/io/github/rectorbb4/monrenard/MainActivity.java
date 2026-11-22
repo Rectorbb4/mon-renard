@@ -79,6 +79,7 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new Chrome());
 
         String action = actionOf(getIntent());
+        if ("alert".equals(action)) showOverLock(true);
         Uri start = Uri.parse(BuildConfig.START_URL);
         if (action != null) start = start.buildUpon().appendQueryParameter("action", action).build();
         if (savedInstanceState == null || !restoreWeb(savedInstanceState)) web.loadUrl(start.toString());
@@ -100,8 +101,51 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         String action = actionOf(intent);
         if (action == null) return;
+        if ("alert".equals(action)) showOverLock(true);
         if (pageReady) sendAction(action);
         else pendingAction = action;
+    }
+
+    // ------------------------------------------------------------------ pause, téléphone verrouillé
+
+    /** Sans réponse, l'écran de pause ne reste pas indéfiniment sur l'écran de verrouillage. */
+    private static final long OVER_LOCK_MS = 15 * 60_000L;
+    private boolean overLock = false;
+    private final Runnable endOverLock = () -> showOverLock(false);
+
+    /** La pause s'affiche par-dessus le verrouillage et allume l'écran. Le reste de l'appli reste protégé. */
+    void showOverLock(boolean on) {
+        overLock = on;
+        setShowWhenLocked(on);
+        setTurnScreenOn(on);
+        web.removeCallbacks(endOverLock);
+        if (on) web.postDelayed(endOverLock, OVER_LOCK_MS);
+    }
+
+    /** Vrai tant que la pause est affichée sur un téléphone encore verrouillé. */
+    boolean isOverLock() {
+        android.app.KeyguardManager keyguard = getSystemService(android.app.KeyguardManager.class);
+        return overLock && keyguard != null && keyguard.isKeyguardLocked();
+    }
+
+    /** Les autorisations de l'appli : l'écran propre à Xiaomi si le téléphone en a un, sinon celui d'Android. */
+    void openLockSettings() {
+        if ("xiaomi".equalsIgnoreCase(Build.MANUFACTURER)) {
+            Intent miui = new Intent("miui.intent.action.APP_PERM_EDITOR")
+                    .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    .putExtra("extra_pkgname", getPackageName());
+            try {
+                startActivity(miui);
+                return;
+            } catch (Exception e) {
+                // Écran absent sur cette version : celui d'Android
+            }
+        }
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+        } catch (ActivityNotFoundException e) {
+            // Pas d'écran de réglages disponible
+        }
     }
 
     private void sendAction(String action) {
@@ -295,6 +339,7 @@ public class MainActivity extends Activity {
         BleSensors.get(this).setListener(null);
         PulseAlert.get(this).setListener(null);
         MomentCapture.get(this).setListener(null);
+        web.removeCallbacks(endOverLock);
         web.destroy();
         super.onDestroy();
     }

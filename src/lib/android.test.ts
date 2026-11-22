@@ -17,7 +17,8 @@ describe('état envoyé au widget Android', () => {
       score: 0.5,
       energy: 0.7,
       sleep: 0.75,
-      sleepAt: 500
+      sleepAt: 500,
+      sleepMinutes: 0
     });
   });
 
@@ -30,7 +31,8 @@ describe('état envoyé au widget Android', () => {
       score: 0,
       energy: 0,
       sleep: 0,
-      sleepAt: 0
+      sleepAt: 0,
+      sleepMinutes: 0
     });
   });
 });

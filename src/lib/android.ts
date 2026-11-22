@@ -50,11 +50,23 @@ export interface RenardAndroid {
   /** Appli 2.4 et suivantes : le pouls gardé autour des pauses, une ligne JSON par moment. */
   momentsRead?(): string;
   momentsAck?(chars: number): void;
+  /** Appli 2.6 et suivantes : la pause s'affiche sur un téléphone verrouillé. */
+  isOverLock?(): boolean;
+  leaveLock?(): void;
+  openLockSettings?(): void;
 }
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */
 type PauseBridge = Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>> &
-  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour' | 'setRingTest'>;
+  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour' | 'setRingTest' | 'openLockSettings'>;
+
+/** La pause sur l'écran verrouillé (appli 2.6 et suivantes), ou null. */
+export function lockBridge(): Required<Pick<RenardAndroid, 'isOverLock' | 'leaveLock'>> | null {
+  const b = bridge();
+  return b && typeof b.isOverLock === 'function' && typeof b.leaveLock === 'function'
+    ? (b as Required<Pick<RenardAndroid, 'isOverLock' | 'leaveLock'>>)
+    : null;
+}
 
 export function pauseBridge(): PauseBridge | null {
   const b = bridge();
@@ -109,7 +121,9 @@ export function widgetState(
     score: last?.mood ?? 0,
     energy: last?.energy ?? 0,
     sleep: measured ? measured.fill : (lastSleep?.sleep ?? 0),
-    sleepAt: measured ? measured.at : lastSleep?.sleep != null ? lastSleep.at : 0
+    sleepAt: measured ? measured.at : lastSleep?.sleep != null ? lastSleep.at : 0,
+    /** Une nuit mesurée se dit en durée, pas en « bonne » ou « mauvaise ». */
+    sleepMinutes: measured ? measured.asleep : 0
   };
 }
 

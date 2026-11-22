@@ -151,6 +151,18 @@
     {#if ringMessage}
       <p class="hint" role="status">{ringMessage}</p>
     {/if}
+    {#if gestureOn && typeof b.openLockSettings === 'function'}
+      <div class="row">
+        <div>
+          <p class="what">Pour que la pause marche téléphone verrouillé</p>
+          <p class="hint">
+            Sur Xiaomi, autorise une fois l'appli à s'afficher sur l'écran de verrouillage et à ouvrir des fenêtres en
+            arrière-plan. Dans sa batterie, choisis aucune restriction.
+          </p>
+        </div>
+        <button type="button" class="ghost" onclick={() => b.openLockSettings?.()}>Autorisations</button>
+      </div>
+    {/if}
 
     <details class="itag" open={status != null}>
       <summary>Porte-clés Bluetooth « iTag » (facultatif)</summary>

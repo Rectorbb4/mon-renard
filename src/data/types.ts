@@ -74,6 +74,13 @@ export interface SleepNight {
   stages: [SleepStage, number][];
 }
 
+/** L'heure de réveil que tu as corrigée toi-même pour une nuit. La nuit de la bague, elle, ne change pas. */
+export interface WakeNote {
+  /** Minuit du jour du réveil, comme `SleepNight.night`. */
+  night: number;
+  at: number;
+}
+
 /** Ce que l'interface envoie pour créer un check-in. */
 export interface CheckInInput {
   mood: number;

@@ -163,6 +163,11 @@ final class PulseAlert {
 
     // ------------------------------------------------------------------ surveillance
 
+    /** Le seuil choisi par l'utilisateur, en battements par minute. */
+    int threshold() {
+        return threshold;
+    }
+
     /** Un pouls des capteurs (ceinture prioritaire, déjà choisi par BleSensors). */
     void onHeart(int bpm, long now) {
         long[] last = samples.peekLast();

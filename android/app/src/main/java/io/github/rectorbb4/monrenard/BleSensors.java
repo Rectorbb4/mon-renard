@@ -295,7 +295,8 @@ final class BleSensors {
         if (!ColmiProtocol.isRing(device)) return false;
         if (!down || repeat != 0) return true;
         String key = android.view.KeyEvent.keyCodeToString(keyCode);
-        logLine("touche " + key);
+        android.app.KeyguardManager keyguard = ctx.getSystemService(android.app.KeyguardManager.class);
+        logLine("touche " + key + (keyguard != null && keyguard.isKeyguardLocked() ? " verrouillé" : ""));
         if (ringTesting()) emitGesture("touche", key);
         else onRingTap(System.currentTimeMillis());
         return true;
@@ -313,6 +314,7 @@ final class BleSensors {
         if (!ringGestureOn() || now < gestureQuietUntil) return;
         if (taps.add(now)) {
             gestureQuietUntil = now + TAP_QUIET;
+            logLine("pause lancée");
             PulseAlert.get(ctx).trigger(RING, taps.seriesStart());
         }
     }
@@ -527,6 +529,19 @@ final class BleSensors {
         onHeartRate(kind, bpm, beats);
     }
 
+    /** Sans mesure pendant ce temps, le renard du widget se calme. */
+    private static final long WIDGET_CALM_MS = 45_000;
+    private final WidgetPulse widgetPulse = new WidgetPulse();
+    private final android.os.Handler widgetCalmHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable widgetCalm = () -> {
+        if (widgetPulse.reset()) setWidgetAgitated(false);
+    };
+
+    private void setWidgetAgitated(boolean on) {
+        WidgetState.saveAgitated(ctx, on);
+        FoxWidget.updateAll(ctx);
+    }
+
     private void onHeartRate(String kind, int bpm, List<Integer> rr) {
         long now = System.currentTimeMillis();
         if (BELT.equals(kind)) lastBeltHr = now;
@@ -535,6 +550,10 @@ final class BleSensors {
         MomentCapture.get(ctx).onReading(kind, bpm, rr, now);
         // Alerte « ton pouls monte » (seuil, plages horaires) : voir PulseAlert
         PulseAlert.get(ctx).onHeart(bpm, now);
+        // Le renard du widget s'agite quand le pouls monte, puis retrouve son calme
+        if (widgetPulse.add(now, bpm, PulseAlert.get(ctx).threshold())) setWidgetAgitated(widgetPulse.isAgitated());
+        widgetCalmHandler.removeCallbacks(widgetCalm);
+        if (widgetPulse.isAgitated()) widgetCalmHandler.postDelayed(widgetCalm, WIDGET_CALM_MS);
         if (now - lastWidget < WIDGET_EVERY) return;
         lastWidget = now;
         WidgetState.saveLive(ctx, bpm, false);
@@ -553,6 +572,8 @@ final class BleSensors {
             lastWidget = 0;
             WidgetState.saveLive(ctx, 0, false);
             FoxWidget.updateLive(ctx);
+            widgetCalmHandler.removeCallbacks(widgetCalm);
+            if (widgetPulse.reset()) setWidgetAgitated(false);
         }
         // Plus rien à garder en arrière-plan
         if (sensors.isEmpty()) LiveService.stop(ctx);

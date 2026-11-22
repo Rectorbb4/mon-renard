@@ -769,7 +769,7 @@ export class FoxScene {
   /** Durée (en secondes) d'un tour de l'animation de repos de l'humeur en cours : la boucle du widget. */
   widgetLoopSeconds(): number {
     const base = this.actions.get(this.mood.base);
-    return base ? base.getClip().duration / this.mood.speed : 0;
+    return base ? base.getClip().duration / (this.mood.speed * (1 + 0.6 * this.pulse)) : 0;
   }
 
   /**
@@ -779,7 +779,8 @@ export class FoxScene {
   widgetFrame(phase: number, blink = 0, breaths?: number): void {
     const base = this.actions.get(this.mood.base);
     if (!this.mixer || !base) return;
-    breaths ??= Math.max(1, Math.round((this.target.breathRate * 1.4 * this.widgetLoopSeconds()) / (Math.PI * 2)));
+    const look = this.pulse > 0 ? agitated(this.target, this.pulse) : this.target;
+    breaths ??= Math.max(1, Math.round((look.breathRate * 1.4 * this.widgetLoopSeconds()) / (Math.PI * 2)));
     // Seulement l'animation de repos, à la position voulue, sans fondu ni geste
     this.mixer.stopAllAction();
     base.reset().play();
@@ -792,7 +793,7 @@ export class FoxScene {
     this.savePose();
 
     // L'humeur sans transition
-    Object.assign(this.blend, this.target);
+    Object.assign(this.blend, look);
     for (const key of Object.keys(this.colors) as (keyof ColorBlend)[]) this.colors[key].copy(this.targetCol[key]);
     this.updateLook();
 

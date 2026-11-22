@@ -2,10 +2,11 @@
 // en boucle fluide dans chaque humeur, éveillé et somnolent (nuit).
 // Prérequis : le serveur de dev tourne (npm run dev) et puppeteer-core est disponible.
 // Usage : node tools/render-widget.mjs [cheminVersPuppeteerCore] [cheminVersChrome]
+// Avec ONLY_AGITE=1, seules les boucles « pouls qui monte » sont refaites.
 //
 // Ce qu'il écrit dans android/app/src/main/res/ :
-//   drawable-nodpi/fox_<humeur>_jour.webp, _soir.webp   les boucles, en WebP animé
-//   drawable/fox_anim_<humeur>.xml, _nuit.xml           ce qui les fait jouer dans le widget
+//   drawable-nodpi/fox_<humeur>_jour.webp, _soir.webp, _agite.webp   les boucles, en WebP animé
+//   drawable/fox_anim_<humeur>.xml, _nuit.xml, _agite.xml            ce qui les fait jouer dans le widget
 //   drawable-nodpi/fox_preview.webp                     l'aperçu dans la liste des widgets
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -30,6 +31,7 @@ const SHORT_LOOP_SECONDS = 2.5;
 const BLINK_SECONDS = 0.2;
 const SIZE = 384; // côté des images, en pixels
 const QUALITY = 0.8;
+const ONLY_AGITATED = process.env.ONLY_AGITE === '1';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ------------------------------------------------------------------ WebP animé
@@ -100,13 +102,18 @@ try {
   await page.addStyleTag({ content: '.stage{height:auto!important;aspect-ratio:4/3;border-radius:0!important}' });
   await wait(1500);
 
-  const enterMood = async (mood) => {
-    await page.evaluate((m) => {
-      const s = window.__foxScene;
-      s.setWidgetMode(false);
-      s.setDrowsy(0);
-      s.setMood(m);
-    }, mood);
+  const enterMood = async (mood, pulse = 0) => {
+    await page.evaluate(
+      (m, p) => {
+        const s = window.__foxScene;
+        s.setWidgetMode(false);
+        s.setDrowsy(0);
+        s.setPulse(p);
+        s.setMood(m);
+      },
+      mood,
+      pulse
+    );
     // Laisser passer le changement de posture (assis ↔ debout) et les gestes en cours
     await wait(4500);
     await page.waitForFunction('window.__foxScene.busy === null', { timeout: 30000, polling: 100 });
@@ -192,8 +199,20 @@ try {
     return file.length;
   };
 
-  // 2e passage : les boucles
+  // Le pouls monte : même humeur, tête levée, souffle court, mouvement plus rapide
   for (const mood of MOODS) {
+    const loop = Math.min(MAX_LOOP_SECONDS, await enterMood(mood, 1));
+    const total = Math.round(loop * FPS);
+    const ms = Math.round((loop * 1000) / total);
+    const frames = [];
+    for (let i = 0; i < total; i++) frames.push(await shoot(i / total, 0, 0));
+    const size = save(`fox_${mood}_agite`, frames, ms);
+    console.log(`OK ${mood} agité : ${total} images à ${ms} ms, ${(size / 1024).toFixed(0)} Ko`);
+  }
+  await page.evaluate(() => window.__foxScene.setPulse(0));
+
+  // 2e passage : les boucles
+  for (const mood of ONLY_AGITATED ? [] : MOODS) {
     const real = await enterMood(mood);
     const loop = Math.min(MAX_LOOP_SECONDS, real);
     const perTour = Math.round(loop * FPS);
@@ -227,7 +246,11 @@ try {
 
 // Ce qui fait jouer chaque boucle dans le widget
 for (const mood of MOODS) {
-  for (const [xml, webp] of [[`fox_anim_${mood}`, `fox_${mood}_jour`], [`fox_anim_${mood}_nuit`, `fox_${mood}_soir`]]) {
+  for (const [xml, webp] of [
+    [`fox_anim_${mood}`, `fox_${mood}_jour`],
+    [`fox_anim_${mood}_nuit`, `fox_${mood}_soir`],
+    [`fox_anim_${mood}_agite`, `fox_${mood}_agite`]
+  ]) {
     fs.writeFileSync(
       path.join(drawable, `${xml}.xml`),
       `<?xml version="1.0" encoding="utf-8"?>

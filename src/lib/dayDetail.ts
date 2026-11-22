@@ -51,6 +51,8 @@ export interface WakeEstimate {
   asleep: number;
   /** Minutes passées au lit ensuite. */
   lingered: number;
+  /** Tu as indiqué cette heure toi-même. */
+  manual?: boolean;
 }
 
 const WAKE_WINDOW = 3 * HOUR;
@@ -67,6 +69,13 @@ export function median(values: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+function wakeAt(segments: StageSegment[], end: number, at: number): WakeEstimate {
+  const asleep = segments
+    .filter((x) => x.stage !== 5 && x.from < at)
+    .reduce((sum, x) => sum + (Math.min(x.to, at) - x.from) / 60_000, 0);
+  return { at, asleep: Math.round(asleep), lingered: Math.round((end - at) / 60_000) };
+}
+
 /**
  * Un moment éveillé en fin de nuit, avec un pic de pouls, après lequel le pouls ne redescend pas.
  * Un réveil suivi d'un rendormissement ne compte pas : le pouls y retrouve son niveau de sommeil.
@@ -81,11 +90,7 @@ export function wakeFromPulse(d: { start: number; end: number; segments: StageSe
     const before = d.hr.filter((p) => p.at < peak.at && p.at >= peak.at - HOUR).map((p) => p.value);
     const after = d.hr.filter((p) => p.at > Math.max(peak.at, s.to)).map((p) => p.value);
     if (before.length < 3 || after.length < 3 || median(after) < median(before) + WAKE_HELD) continue;
-    const at = Math.min(s.from, peak.at);
-    const asleep = d.segments
-      .filter((x) => x.stage !== 5 && x.from < at)
-      .reduce((sum, x) => sum + (Math.min(x.to, at) - x.from) / 60_000, 0);
-    return { at, asleep: Math.round(asleep), lingered: Math.round((d.end - at) / 60_000) };
+    return wakeAt(d.segments, d.end, Math.min(s.from, peak.at));
   }
   return null;
 }
@@ -108,14 +113,31 @@ function cutAt(n: SleepNight, at: number): SleepNight {
   return { ...n, end: at, stages };
 }
 
-function fit(n: SleepNight, hr: Point[]): FittedNight {
-  const wake = wakeFromPulse({ start: n.start, end: n.end, segments: stageSegments(n), hr });
+function fit(n: SleepNight, hr: Point[], noted?: number): FittedNight {
+  const segments = stageSegments(n);
+  // L'heure que tu donnes passe avant celle lue dans le pouls
+  const wake =
+    noted != null && noted > n.start && noted <= n.end
+      ? { ...wakeAt(segments, n.end, noted), manual: true }
+      : wakeFromPulse({ start: n.start, end: n.end, segments, hr });
   return wake ? { night: cutAt(n, wake.at), wake } : { night: n, wake: null };
 }
 
-/** La nuit ajustée : elle s'arrête au vrai réveil. Sans réveil repéré, c'est la nuit de la bague. */
-export function fitNight(n: SleepNight, samples: HealthSample[]): FittedNight {
-  return fit(n, pointsOf(samples, 'hr', n.start, n.end));
+/** La nuit ajustée : elle s'arrête au vrai réveil. Sans réveil connu, c'est la nuit de la bague. */
+export function fitNight(n: SleepNight, samples: HealthSample[], noted?: number): FittedNight {
+  return fit(n, pointsOf(samples, 'hr', n.start, n.end), noted);
+}
+
+/** « 07:15 » devient un instant de cette nuit, ou null s'il tombe en dehors. */
+export function wakeFromClock(n: SleepNight, clock: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(clock);
+  if (!m) return null;
+  const d = new Date(n.end);
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  // Réveil avant minuit pour une nuit finie après minuit
+  if (d.getTime() > n.end) d.setDate(d.getDate() - 1);
+  const at = d.getTime();
+  return at > n.start && at <= n.end ? at : null;
 }
 
 function firstAt(points: Point[], t: number): number {
@@ -130,12 +152,12 @@ function firstAt(points: Point[], t: number): number {
 }
 
 /** Toutes les nuits d'un coup, sans relire tout le pouls pour chacune. */
-export function fitNights(nights: SleepNight[], samples: HealthSample[]): FittedNight[] {
+export function fitNights(nights: SleepNight[], samples: HealthSample[], noted: ReadonlyMap<number, number> = new Map()): FittedNight[] {
   const hr = samples
     .filter((s) => s.metric === 'hr')
     .map(({ at, value }) => ({ at, value }))
     .sort((a, b) => a.at - b.at);
-  return nights.map((n) => fit(n, hr.slice(firstAt(hr, n.start), firstAt(hr, n.end + 1))));
+  return nights.map((n) => fit(n, hr.slice(firstAt(hr, n.start), firstAt(hr, n.end + 1)), noted.get(n.night)));
 }
 
 export interface NightDetail {

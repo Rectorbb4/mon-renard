@@ -6,7 +6,7 @@ import { WORD_MAX, ensureProfile, normalizeCheckIn } from './checkins';
 import type { RenardDB } from './db';
 import { cleanNote } from './events';
 import { cleanCapture } from './moments';
-import { HEALTH_METRICS, type CheckIn, type FeltEvent, type HealthMetric, type HealthSample, type Profile, type SleepNight, type SleepStage } from './types';
+import { HEALTH_METRICS, type CheckIn, type FeltEvent, type HealthMetric, type HealthSample, type Profile, type SleepNight, type SleepStage, type WakeNote } from './types';
 
 export const BACKUP_APP = 'mon-renard';
 export const BACKUP_FORMAT = 1;
@@ -40,6 +40,8 @@ export type BackupSample = [HealthMetric, number, number] | [HealthMetric, numbe
 export interface BackupHealth {
   samples: BackupSample[];
   nights: SleepNight[];
+  /** Les heures de réveil corrigées à la main. */
+  wakes?: WakeNote[];
 }
 
 const toBackupSample = (s: HealthSample): BackupSample =>
@@ -58,7 +60,7 @@ function fromBackupSample(s: BackupSample): HealthSample {
 export class BackupError extends Error {}
 
 export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: string): Promise<Backup> {
-  return db.transaction('r', [db.profiles, db.checkins, db.events, db.samples, db.nights], async () => {
+  return db.transaction('r', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes], async () => {
     const profiles = (await db.profiles.toArray()).map(({ id, name, kind, createdAt }) => ({ id: id!, name, kind, createdAt }));
     const byTime = <T extends { at: number }>(a: T, b: T) => a.at - b.at;
     const checkins = (await db.checkins.toArray()).map(({ id: _id, ...c }) => c).sort(byTime);
@@ -67,7 +69,11 @@ export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: 
     if (appVersion) backup.appVersion = appVersion;
     const samples = await db.samples.toArray();
     const nights = await db.nights.toArray();
-    if (samples.length || nights.length) backup.health = { samples: samples.map(toBackupSample), nights };
+    const wakes = await db.wakes.toArray();
+    if (samples.length || nights.length) {
+      backup.health = { samples: samples.map(toBackupSample), nights };
+      if (wakes.length) backup.health.wakes = wakes;
+    }
     return backup;
   });
 }
@@ -120,7 +126,15 @@ function parseHealth(raw: unknown): { health?: BackupHealth; invalid: number } {
     }
     nights.push({ night: n.night, start: n.start, end: n.end, stages: stages.map(([s, m]) => [s, m]) });
   }
-  return samples.length || nights.length ? { health: { samples, nights }, invalid } : { invalid };
+  if (!samples.length && !nights.length) return { invalid };
+  const wakes: WakeNote[] = [];
+  for (const w of Array.isArray(raw.wakes) ? raw.wakes : []) {
+    if (isObject(w) && isTime(w.night) && isTime(w.at)) wakes.push({ night: w.night, at: w.at });
+    else invalid++;
+  }
+  const health: BackupHealth = { samples, nights };
+  if (wakes.length) health.wakes = wakes;
+  return { health, invalid };
 }
 
 /** Lit et vérifie le contenu d'un fichier. Lève une BackupError avec un message clair si ce n'est pas utilisable. */
@@ -248,7 +262,7 @@ export interface ImportResult {
 
 /** Ajoute le contenu de la sauvegarde au journal du téléphone, sans doublons et sans rien effacer. */
 export async function importBackup(db: RenardDB, backup: Backup): Promise<ImportResult> {
-  return db.transaction('rw', [db.profiles, db.checkins, db.events, db.samples, db.nights], async () => {
+  return db.transaction('rw', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes], async () => {
     // Chaque profil de la sauvegarde retrouve son profil sur le téléphone (même nom, même type).
     // Une sauvegarde à un seul profil va dans le profil principal, comme avant le changement de téléphone.
     const local = await db.profiles.toArray();
@@ -324,6 +338,9 @@ export async function importBackup(db: RenardDB, backup: Backup): Promise<Import
       const newNights = backup.health.nights.filter((n) => !haveNights.has(n.night));
       await db.samples.bulkPut(newSamples);
       await db.nights.bulkPut(newNights);
+      // Un réveil déjà corrigé sur ce téléphone reste celui de ce téléphone
+      const haveWakes = new Set(await db.wakes.toCollection().primaryKeys());
+      await db.wakes.bulkPut((backup.health.wakes ?? []).filter((w) => !haveWakes.has(w.night)));
       result.measures = newSamples.length + newNights.length;
       result.already += backup.health.samples.length + backup.health.nights.length - result.measures;
     }

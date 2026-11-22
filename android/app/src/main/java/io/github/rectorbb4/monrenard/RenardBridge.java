@@ -107,6 +107,24 @@ public class RenardBridge {
         activity.runOnUiThread(() -> PulseAlert.get(activity).snooze());
     }
 
+    /** Vrai tant que la pause s'affiche sur un téléphone encore verrouillé. */
+    @JavascriptInterface
+    public boolean isOverLock() {
+        return activity.isOverLock();
+    }
+
+    /** La pause est finie : l'appli repasse derrière le verrouillage. */
+    @JavascriptInterface
+    public void leaveLock() {
+        activity.runOnUiThread(() -> activity.showOverLock(false));
+    }
+
+    /** Ouvre l'écran où autoriser l'affichage sur l'écran verrouillé. */
+    @JavascriptInterface
+    public void openLockSettings() {
+        activity.runOnUiThread(activity::openLockSettings);
+    }
+
     /** Version d'essai seulement : 35 secondes d'un faux pouls, comme si un capteur l'envoyait (tests automatiques). */
     @JavascriptInterface
     public void debugPulse(int bpm) {

@@ -7,6 +7,7 @@
   import { alarm, pullMoments, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { startHealthSync } from './lib/healthSync.svelte';
+  import { leaveLock, lockScreen, refreshLock } from './lib/lockScreen.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
   import Accueil from './pages/Accueil.svelte';
   import Reperes from './pages/Reperes.svelte';
@@ -16,9 +17,19 @@
   // Boutons du widget Android : l'accueil traite l'action, on y retourne si besoin.
   // « alert » (notification « ton pouls monte ») ouvre l'écran d'alerte, par-dessus tout.
   function handleAction(action: AppAction) {
-    if (action === 'alert') return openNativeAlert();
+    if (action === 'alert') {
+      openNativeAlert();
+      refreshLock();
+      return;
+    }
     requestAction(action);
     if (parseRoute(location.hash) !== 'accueil') location.hash = hrefFor('accueil');
+  }
+
+  /** Téléphone verrouillé : on ne montre jamais que la pause. */
+  function syncLock() {
+    refreshLock();
+    if (lockScreen.over && !alarm.open && !lockScreen.breathing) openNativeAlert();
   }
 
   /** L'appli Android dit où en est la dernière alerte (sonne-t-elle encore ?). */
@@ -47,7 +58,9 @@
   catchUpPauses().catch((e) => console.error(e));
   $effect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') catchUpPauses().catch((e) => console.error(e));
+      if (document.visibilityState !== 'visible') return;
+      syncLock();
+      catchUpPauses().catch((e) => console.error(e));
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -60,7 +73,13 @@
   });
   const launchAction = takeLaunchAction();
   if (launchAction) handleAction(launchAction);
+  syncLock();
   $effect(() => onAppAction(handleAction));
+
+  // Pause terminée sur l'écran verrouillé : l'appli repasse derrière lui
+  $effect(() => {
+    if (lockScreen.over && !alarm.open && !lockScreen.breathing) leaveLock();
+  });
 
   // L'appli Android sonne (ou s'arrête de sonner) pendant que la page est ouverte
   $effect(() => {
@@ -127,7 +146,7 @@
 {/if}
 
 <div class="shell">
-  <main>
+  <main class:veiled={lockScreen.over && !(lockScreen.breathShown && route === 'accueil')}>
     {#if route === 'reperes'}
       <Reperes />
     {:else if route === 'suivi'}
@@ -154,16 +173,18 @@
     {/if}
   </main>
 
-  <nav aria-label="Navigation principale">
-    {#each NAV as item (item.route)}
-      <a href={hrefFor(item.route)} aria-current={route === item.route ? 'page' : undefined}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d={item.icon} />
-        </svg>
-        <span>{item.label}</span>
-      </a>
-    {/each}
-  </nav>
+  {#if !lockScreen.over}
+    <nav aria-label="Navigation principale">
+      {#each NAV as item (item.route)}
+        <a href={hrefFor(item.route)} aria-current={route === item.route ? 'page' : undefined}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={item.icon} />
+          </svg>
+          <span>{item.label}</span>
+        </a>
+      {/each}
+    </nav>
+  {/if}
 </div>
 
 <style>
@@ -181,6 +202,10 @@
     padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 24px);
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  main.veiled {
+    visibility: hidden;
   }
 
   .load-error {
