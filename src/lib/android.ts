@@ -3,6 +3,8 @@
 
 import type { CheckIn, FeltEvent } from '../data/types';
 import { MOODS, moodFromScore } from '../fox/moods';
+import { startOfDay } from './history';
+import type { OwnNight } from './ownNight';
 
 export interface RenardAndroid {
   setWidgetState(json: string): void;
@@ -86,9 +88,19 @@ export function isAndroidApp(): boolean {
 /**
  * Ce que le widget doit afficher : humeur du dernier check-in, jauges (humeur, énergie, nuit)
  * et heures des derniers instants. Le widget décide lui-même si la nuit date d'aujourd'hui.
+ * Sans nuit notée aujourd'hui, il prend ta nuit ajustée à ton vrai réveil.
  */
-export function widgetState(last: CheckIn | null, lastFelt: FeltEvent | null, lastSleep: CheckIn | null = null) {
+export function widgetState(
+  last: CheckIn | null,
+  lastFelt: FeltEvent | null,
+  lastSleep: CheckIn | null = null,
+  own: OwnNight | null = null,
+  now = Date.now()
+) {
   const mood = last ? moodFromScore(last.mood) : null;
+  const today = startOfDay(now);
+  const noted = lastSleep?.sleep != null && lastSleep.at >= today;
+  const measured = !noted && own && own.at >= today ? own : null;
   return {
     mood,
     label: mood ? MOODS[mood].label : null,
@@ -96,18 +108,23 @@ export function widgetState(last: CheckIn | null, lastFelt: FeltEvent | null, la
     lastFelt: lastFelt?.at ?? 0,
     score: last?.mood ?? 0,
     energy: last?.energy ?? 0,
-    sleep: lastSleep?.sleep ?? 0,
-    sleepAt: lastSleep?.sleep != null ? lastSleep.at : 0
+    sleep: measured ? measured.fill : (lastSleep?.sleep ?? 0),
+    sleepAt: measured ? measured.at : lastSleep?.sleep != null ? lastSleep.at : 0
   };
 }
 
 let lastSent = '';
 
 /** Met le widget à jour (seulement si quelque chose a changé). */
-export function updateWidget(last: CheckIn | null, lastFelt: FeltEvent | null, lastSleep: CheckIn | null = null): void {
+export function updateWidget(
+  last: CheckIn | null,
+  lastFelt: FeltEvent | null,
+  lastSleep: CheckIn | null = null,
+  own: OwnNight | null = null
+): void {
   const b = bridge();
   if (!b) return;
-  const json = JSON.stringify(widgetState(last, lastFelt, lastSleep));
+  const json = JSON.stringify(widgetState(last, lastFelt, lastSleep, own));
   if (json === lastSent) return;
   lastSent = json;
   try {

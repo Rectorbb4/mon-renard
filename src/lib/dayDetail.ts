@@ -61,7 +61,7 @@ const WAKE_RISE = 12;
 /** Après le pic, le pouls doit rester au-dessus de celui de l'heure d'avant d'autant. */
 const WAKE_HELD = 4;
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;

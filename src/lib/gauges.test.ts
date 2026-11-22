@@ -20,8 +20,29 @@ describe('jauges du renard', () => {
       energyWord: 'En forme',
       sleep: 0.75,
       sleepWord: 'Bonne',
+      sleepNote: null,
       stale: false
     });
+  });
+
+  it("prend la nuit ajustée quand elle n'est pas notée", () => {
+    const own = { at: new Date(2026, 10, 15, 7, 20).getTime(), asleep: 494, usual: 500, fill: 0.988 };
+    const g = gaugeValues(c(NOON - HOUR, 0, 0.5), null, NOON, own);
+    expect(g?.sleep).toBe(0.988);
+    expect(g?.sleepWord).toBe('8 h 14');
+    expect(g?.sleepNote).toContain('07:20');
+  });
+
+  it('garde toujours la nuit que tu as notée', () => {
+    const own = { at: new Date(2026, 10, 15, 7, 20).getTime(), asleep: 494, usual: 500, fill: 0.988 };
+    const g = gaugeValues(c(NOON - HOUR, 0, 0.5), c(NOON - 2 * HOUR, 0, 0.5, 0.25), NOON, own);
+    expect(g?.sleep).toBe(0.25);
+    expect(g?.sleepNote).toBeNull();
+  });
+
+  it("ignore une nuit ajustée d'un autre jour", () => {
+    const own = { at: new Date(2026, 10, 14, 7, 20).getTime(), asleep: 494, usual: 500, fill: 0.988 };
+    expect(gaugeValues(c(NOON, 0, 0.5), null, NOON, own)?.sleepWord).toBe('Pas notée');
   });
 
   it("ignore une nuit notée hier", () => {

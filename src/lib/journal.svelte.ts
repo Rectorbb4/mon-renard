@@ -22,6 +22,7 @@ import {
 } from '../data/events';
 import type { CheckIn, CheckInInput, FeltEvent } from '../data/types';
 import { isAndroidApp, updateWidget } from './android';
+import { readOwnNight, type OwnNight } from './ownNight';
 
 export const journal = $state({
   /** La base est ouverte et le profil connu. */
@@ -33,7 +34,9 @@ export const journal = $state({
   /** Le dernier check-in où la nuit a été notée (jauge « nuit »). */
   lastSleep: null as CheckIn | null,
   /** Le dernier moment « je le sens ». */
-  lastFelt: null as FeltEvent | null
+  lastFelt: null as FeltEvent | null,
+  /** La nuit de ce matin, arrêtée à ton vrai réveil, pour le renard quand elle n'est pas notée. */
+  ownNight: null as OwnNight | null
 });
 
 let started: Promise<void> | null = null;
@@ -69,12 +72,21 @@ export function startJournal(): Promise<void> {
         next: (e) => (journal.lastFelt = e ?? null),
         error: (e) => console.error(e)
       });
-      // Dans l'appli Android, le widget suit le dernier check-in et le dernier moment
+      liveQuery(() => readOwnNight(db)).subscribe({
+        next: (n) => (journal.ownNight = n),
+        error: (e) => console.error(e)
+      });
+      // Dans l'appli Android, le widget suit le dernier check-in, le dernier moment et ta nuit
       if (isAndroidApp()) {
         $effect.root(() => {
           $effect(() => {
             if (journal.ready)
-              updateWidget($state.snapshot(journal.last), $state.snapshot(journal.lastFelt), $state.snapshot(journal.lastSleep));
+              updateWidget(
+                $state.snapshot(journal.last),
+                $state.snapshot(journal.lastFelt),
+                $state.snapshot(journal.lastSleep),
+                $state.snapshot(journal.ownNight)
+              );
           });
         });
       }

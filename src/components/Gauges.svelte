@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Les trois jauges du renard, façon animal de compagnie, d'après le dernier check-in.
+  // Les trois jauges du renard, façon animal de compagnie : ton check-in, et ta nuit ajustée si elle n'est pas notée.
   // L'humeur est centrée : l'équilibre est au milieu, la barre part à gauche (plus bas) ou à droite (plus haut).
   import type { GaugeValues } from '../lib/gauges';
   import { moodFill } from '../lib/gauges';
@@ -39,6 +39,7 @@
   <div
     class="gauge"
     class:empty={values.sleep == null}
+    class:measured={values.sleepNote != null}
     role="meter"
     aria-label="Nuit"
     aria-valuemin={0}
@@ -54,8 +55,13 @@
     <span class="word">{values.sleepWord}</span>
   </div>
 
+  {#if values.sleepNote}
+    <p class="stale-note">{values.sleepNote}</p>
+  {/if}
   {#if values.stale}
-    <p class="stale-note">Ces jauges datent de ton dernier check-in. Un nouveau les remet à jour.</p>
+    <p class="stale-note">
+      {values.sleepNote ? 'Humeur et énergie datent' : 'Ces jauges datent'} de ton dernier check-in. Un nouveau les remet à jour.
+    </p>
   {/if}
 </div>
 
@@ -99,7 +105,7 @@
     grid-area: track;
   }
 
-  .stale .gauge,
+  .stale .gauge:not(.measured),
   .gauge.empty {
     opacity: 0.5;
   }

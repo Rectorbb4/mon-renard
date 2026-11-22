@@ -44,7 +44,7 @@
     checking && preview != null ? moodFromScore(preview) : journal.last ? moodFromScore(journal.last.mood) : 'equilibre'
   );
 
-  const gauges = $derived(gaugeValues(journal.last, journal.lastSleep, now));
+  const gauges = $derived(gaugeValues(journal.last, journal.lastSleep, now, journal.ownNight));
 
   // Il sent aussi ton cœur (vrais capteurs seulement) : il s'agite un moment, ton humeur ne change pas.
   let pulseClock = $state(Date.now());
@@ -208,7 +208,7 @@
     <p class="mood-name">{MOODS[mood].label}</p>
     <p class="mood-caption">{MOODS[mood].caption}</p>
     {#if heartUp && !checking}
-      <p class="heart-line">Ton cœur s'accélère, ton renard le sent aussi.</p>
+      <p class="heart-line">Ton pouls monte, ton renard le sent. Si tu viens de bouger, c'est normal.</p>
     {/if}
     {#if !checking}
       {#if thanks}
