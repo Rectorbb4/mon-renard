@@ -11,6 +11,7 @@
     PATTERN_MIN,
     relativeCurve
   } from '../lib/moments';
+  import Explain from './Explain.svelte';
 
   interface Props {
     events: FeltEvent[];
@@ -209,6 +210,7 @@
       La vibration de la pause peut faire bouger ton pouls juste après le geste : pour anticiper, regarde surtout la
       partie d'avant.{#if pattern.count >= PATTERN_MIN} Une tendance sur quelques moments reste une piste à confirmer, pas une certitude.{/if}
     </p>
+    <Explain id="moments" />
   {/if}
 </section>
 

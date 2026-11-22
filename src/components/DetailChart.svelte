@@ -1,6 +1,10 @@
 <script lang="ts">
   // Une petite courbe ou des barres, à lire au doigt : une valeur par point, sans lissage.
+  // Deux doigts rapprochent ou déplacent la plage de temps ; un seul doigt lit la valeur ou fait défiler la page.
+  import { clampView, MIN_SPAN, timeTicks, type Span } from '../lib/chartZoom';
   import type { Point } from '../lib/dayDetail';
+  import { pinch } from '../lib/pinch';
+  import ZoomBar from './ZoomBar.svelte';
 
   interface Props {
     points: Point[];
@@ -11,8 +15,7 @@
     format: (v: number) => string;
     /** Résumé lu par les lecteurs d'écran. */
     label: string;
-    ticks: { t: number; label: string }[];
-    /** Échelle imposée ; sinon, calée sur les valeurs. */
+    /** Échelle imposée ; sinon, calée sur les valeurs visibles. */
     domain?: [number, number];
     /** Durée couverte par une barre. */
     slot?: number;
@@ -22,25 +25,54 @@
     mark?: number | null;
   }
 
-  let { points, from, to, kind = 'line', color, format, label, ticks, domain, slot = 3_600_000, gap = 20 * 60_000, mark = null }: Props = $props();
+  let { points, from, to, kind = 'line', color, format, label, domain, slot = 3_600_000, gap = 20 * 60_000, mark = null }: Props = $props();
 
   const W = 340;
   const H = 140;
   const PAD = { left: 32, right: 6, top: 8, bottom: 22 };
+  const uid = $props.id();
+  const clipId = `chart-${uid}`;
 
   let picked = $state<Point | null>(null);
+  let pinching = $state(false);
+  let zoomed = $state.raw<Span | null>(null);
   const clock = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  // Un autre jour ou une autre nuit : on repart de toute la plage
+  $effect.pre(() => {
+    void from;
+    void to;
+    zoomed = null;
+    picked = null;
+  });
+
+  const bounds = $derived({ from, to });
+  const minSpan = $derived(kind === 'bars' ? Math.max(MIN_SPAN, slot * 2) : MIN_SPAN);
+  const canZoom = $derived(to - from > minSpan);
+  const view = $derived(zoomed ? clampView(zoomed, bounds, minSpan) : bounds);
+  const ticks = $derived(timeTicks(view));
+
+  const within = (p: Point) => (kind === 'bars' ? p.at + slot > view.from && p.at < view.to : p.at >= view.from && p.at <= view.to);
+  const shown = $derived(points.filter(within));
+  /** La courbe garde un point de chaque côté, pour continuer jusqu'au bord. */
+  const traced = $derived.by(() => {
+    const first = points.findIndex(within);
+    if (first < 0) return [];
+    let last = first;
+    for (let i = first; i < points.length && points[i].at <= view.to; i++) last = i;
+    return points.slice(Math.max(0, first - 1), last + 2);
+  });
 
   const scale = $derived.by((): [number, number] => {
     if (domain) return domain;
-    const v = points.map((p) => p.value);
+    const v = (shown.length ? shown : points).map((p) => p.value);
     if (kind === 'bars') return [0, Math.max(10, Math.ceil(Math.max(...v, 0) * 1.1))];
-    const lo = Math.floor(Math.min(...v) - 4);
-    const hi = Math.ceil(Math.max(...v) + 4);
+    const lo = Math.floor((Math.min(...v) - 2) / 5) * 5;
+    const hi = Math.ceil((Math.max(...v) + 2) / 5) * 5;
     return [Math.max(0, lo), Math.max(hi, lo + 10)];
   });
 
-  const x = (t: number) => PAD.left + ((t - from) / (to - from || 1)) * (W - PAD.left - PAD.right);
+  const x = (t: number) => PAD.left + ((t - view.from) / (view.to - view.from || 1)) * (W - PAD.left - PAD.right);
   const y = (v: number) => {
     const [lo, hi] = scale;
     const clamped = Math.max(lo, Math.min(hi, v));
@@ -50,24 +82,42 @@
   const line = $derived.by(() => {
     let d = '';
     let previous: number | null = null;
-    for (const p of points) {
+    for (const p of traced) {
       d += `${previous == null || p.at - previous > gap ? 'M' : 'L'}${x(p.at).toFixed(1)} ${y(p.value).toFixed(1)}`;
       previous = p.at;
     }
     return d;
   });
 
-  const barWidth = $derived(Math.max(3, (slot / (to - from || 1)) * (W - PAD.left - PAD.right) - 2));
-  const levels = $derived([scale[0], Math.round((scale[0] + scale[1]) / 2), scale[1]]);
+  const barWidth = $derived(Math.max(3, (slot / (view.to - view.from || 1)) * (W - PAD.left - PAD.right) - 2));
+  const levels = $derived([...new Set([scale[0], Math.round((scale[0] + scale[1]) / 2), scale[1]])]);
   const center = (p: Point) => (kind === 'bars' ? p.at + slot / 2 : p.at);
 
   function read(e: PointerEvent) {
-    if (!points.length) return;
+    if (pinching || !shown.length) return;
     const box = (e.currentTarget as SVGElement).getBoundingClientRect();
     const px = ((e.clientX - box.left) / box.width) * W;
-    const t = from + ((px - PAD.left) / (W - PAD.left - PAD.right)) * (to - from);
-    picked = points.reduce((a, b) => (Math.abs(center(b) - t) < Math.abs(center(a) - t) ? b : a));
+    const t = view.from + ((px - PAD.left) / (W - PAD.left - PAD.right)) * (view.to - view.from);
+    picked = shown.reduce((a, b) => (Math.abs(center(b) - t) < Math.abs(center(a) - t) ? b : a));
   }
+
+  function setView(next: Span) {
+    picked = null;
+    zoomed = next.from <= from && next.to >= to ? null : next;
+  }
+
+  const gesture = $derived({
+    left: PAD.left / W,
+    right: (W - PAD.right) / W,
+    view: () => view,
+    bounds: () => bounds,
+    minSpan: () => minSpan,
+    onview: setView,
+    onpinch: (active: boolean) => {
+      pinching = active;
+      if (active) picked = null;
+    }
+  });
 
   const anchor = (t: number) => (x(t) < PAD.left + 16 ? 'start' : x(t) > W - PAD.right - 16 ? 'end' : 'middle');
 </script>
@@ -78,51 +128,64 @@
     viewBox="0 0 {W} {H}"
     role="img"
     aria-label={label}
+    use:pinch={gesture}
     onpointermove={read}
     onpointerdown={read}
     onpointerleave={() => (picked = null)}
   >
+    <defs>
+      <clipPath id={clipId}>
+        <rect x={PAD.left} y={PAD.top - 6} width={W - PAD.left - PAD.right} height={H - PAD.top - PAD.bottom + 6} />
+      </clipPath>
+    </defs>
     {#each levels as v (v)}
       <line class="grid" x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} />
       <text class="tick" x={PAD.left - 5} y={y(v) + 4} text-anchor="end">{v}</text>
     {/each}
-    {#if mark != null}
-      <line class="mark" x1={x(mark)} x2={x(mark)} y1={PAD.top} y2={H - PAD.bottom} />
-    {/if}
-    {#if kind === 'bars'}
-      {#each points as p (p.at)}
-        <rect
-          class:dim={picked != null && picked.at !== p.at}
-          x={x(p.at) + 1}
-          y={y(p.value)}
-          width={barWidth}
-          height={Math.max(2, H - PAD.bottom - y(p.value))}
-          rx="2"
-          style:fill={color}
-        />
-      {/each}
-    {:else}
-      <path d={line} style:stroke={color} />
-      {#if points.length <= 12}
-        {#each points as p (p.at)}
-          <circle class="point" cx={x(p.at)} cy={y(p.value)} r="3.5" style:fill={color} />
+    <g clip-path="url(#{clipId})">
+      {#if mark != null}
+        <line class="mark" x1={x(mark)} x2={x(mark)} y1={PAD.top} y2={H - PAD.bottom} />
+      {/if}
+      {#if kind === 'bars'}
+        {#each shown as p (p.at)}
+          <rect
+            class:dim={picked != null && picked.at !== p.at}
+            x={x(p.at) + 1}
+            y={y(p.value)}
+            width={barWidth}
+            height={Math.max(2, H - PAD.bottom - y(p.value))}
+            rx="2"
+            style:fill={color}
+          />
         {/each}
+      {:else}
+        <path d={line} style:stroke={color} />
+        {#if shown.length <= 16}
+          {#each shown as p (p.at)}
+            <circle class="point" cx={x(p.at)} cy={y(p.value)} r="3.5" style:fill={color} />
+          {/each}
+        {/if}
       {/if}
-    {/if}
-    {#if picked}
-      <line class="cursor" x1={x(center(picked))} x2={x(center(picked))} y1={PAD.top} y2={H - PAD.bottom} />
-      {#if kind === 'line'}
-        <circle class="point" cx={x(picked.at)} cy={y(picked.value)} r="5" style:fill={color} />
+      {#if picked}
+        <line class="cursor" x1={x(center(picked))} x2={x(center(picked))} y1={PAD.top} y2={H - PAD.bottom} />
+        {#if kind === 'line'}
+          <circle class="point" cx={x(picked.at)} cy={y(picked.value)} r="5" style:fill={color} />
+        {/if}
       {/if}
-    {/if}
+    </g>
     {#each ticks as k (k.t)}
       <text class="tick" x={x(k.t)} y={H - 6} text-anchor={anchor(k.t)}>{k.label}</text>
     {/each}
   </svg>
+  {#if canZoom}
+    <ZoomBar {view} {bounds} {minSpan} name={label.split(' :')[0]} onview={setView} />
+  {/if}
 </figure>
 
 <style>
   figure {
+    display: grid;
+    gap: 2px;
     margin: 0;
     min-width: 0;
   }

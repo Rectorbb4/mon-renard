@@ -3,6 +3,7 @@
   // et ce qui bouge ensemble entre ton humeur et ton corps.
   import { untrack } from 'svelte';
   import DayDetails from '../components/DayDetails.svelte';
+  import Explain from '../components/Explain.svelte';
   import { fitNights } from '../lib/dayDetail';
   import FourWeeks from '../components/FourWeeks.svelte';
   import MomentsCard from '../components/MomentsCard.svelte';
@@ -182,7 +183,7 @@
       color: 'var(--stage-light)',
       format: formatDuration,
       detail: (d) => (d.deep != null ? `Profond ${formatDuration(d.deep)}, paradoxal ${formatDuration(d.rem)}` : null),
-      about: "Le temps dormi, sans les moments éveillés. Une nuit compte pour le jour où tu te réveilles."
+      about: 'Le temps dormi, sans les moments éveillés. Une nuit compte pour le jour où tu te réveilles.'
     },
     {
       key: 'restHr',
@@ -191,7 +192,7 @@
       color: 'var(--heart)',
       format: bpm,
       detail: () => null,
-      about: 'Lu surtout pendant la nuit. Il monte souvent avec la fatigue, le stress, l’alcool ou un début de maladie.'
+      about: 'La moyenne de tes 30 % de valeurs les plus basses de la nuit, le moment où ton cœur est le plus calme. Il monte souvent avec la fatigue, le stress, l’alcool ou un début de maladie.'
     },
     {
       key: 'hrv',
@@ -200,7 +201,7 @@
       color: 'var(--breath)',
       format: ms,
       detail: () => null,
-      about: 'Les petites différences entre deux battements. Plus haute, elle indique en général un corps mieux reposé. Compare-la seulement à toi-même.'
+      about: 'La moyenne du jour des petits écarts de temps entre deux battements. Plus haute, elle indique en général un corps mieux reposé. Compare-la seulement à toi-même.'
     },
     {
       key: 'spo2',
@@ -209,7 +210,7 @@
       color: 'var(--mood-low)',
       format: pct,
       detail: (d) => (d.spo2Low != null ? `Plus bas ${d.spo2Low} %` : null),
-      about: 'Estimation de la bague, moins précise qu’un oxymètre. Si tu as un doute sur ta respiration, demande un vrai contrôle.'
+      about: 'La moyenne du jour de la part d’oxygène dans ton sang. C’est une estimation de la bague, moins précise qu’un oxymètre. Si tu as un doute sur ta respiration, demande un vrai contrôle.'
     },
     {
       key: 'stress',
@@ -218,7 +219,7 @@
       color: 'var(--energy)',
       format: score,
       detail: () => null,
-      about: 'C’est ce que QRing appelle « Pression ». Ce n’est pas ta tension artérielle : la bague ne sait pas la mesurer.'
+      about: 'La moyenne du jour du score de la bague, de 0 à 100. C’est ce que QRing appelle « Pression ». Ce n’est pas ta tension artérielle : la bague ne sait pas la mesurer.'
     },
     {
       key: 'steps',
@@ -227,7 +228,7 @@
       color: 'var(--grass)',
       format: count,
       detail: (d) => (d.meters != null ? `${(d.meters / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km` : null),
-      about: 'Compté par quart d’heure. Une activité inhabituelle peut aussi être un signe à regarder, dans un sens comme dans l’autre.'
+      about: 'Le total du jour, compté par quart d’heure. Une activité inhabituelle peut aussi être un signe à regarder, dans un sens comme dans l’autre.'
     }
   ];
 
@@ -316,6 +317,7 @@
           ? 'Ta nuit s’arrête à ton vrai réveil, repéré à ton pouls ou noté par toi.'
           : 'Les chiffres de la bague, sans correction, pour comparer avec QRing.'}
       </p>
+      <Explain id="source" />
     </div>
   {/if}
 
@@ -368,6 +370,9 @@
     events={dayEvents}
     {summary}
   />
+  {#if hasMeasures}
+    <Explain id="terrier" />
+  {/if}
 
   {#if loaded && !hasMeasures}
     <section class="first">
@@ -397,6 +402,7 @@
   {#if hasMeasures}
     <section aria-labelledby="mesures">
       <h2 id="mesures">Les mesures du jour</h2>
+      <Explain id="mesures" />
       <ul class="metrics">
         {#each METRICS as m (m.key)}
           {@const value = stat?.[m.key] ?? null}
@@ -474,12 +480,14 @@
       {:else if !adjusted}
         <p class="calm">Rien ne s'écarte de ton habitude ces derniers jours.</p>
       {/if}
+      <Explain id="regarder" />
     </section>
 
     <section aria-labelledby="semaines">
       <h2 id="semaines">Quatre semaines, humeur et corps</h2>
       <p class="lead">Chaque case est un jour, comparé à toi-même. Touche une colonne pour ouvrir ce jour.</p>
       <FourWeeks {days} {selected} {now} onpick={pick} />
+      <Explain id="semaines" />
     </section>
 
     <section aria-labelledby="ensemble">
@@ -499,6 +507,7 @@
           check-in par jour suffit.
         </p>
       {/if}
+      <Explain id="ensemble" />
     </section>
 
     <p class="foot">

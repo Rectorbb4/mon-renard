@@ -16,9 +16,13 @@
     type WakeEstimate,
     type ZoneDef
   } from '../lib/dayDetail';
+  import { clampView, type Span } from '../lib/chartZoom';
   import { formatDuration, stageMinutes, type StageSegment } from '../lib/healthDays';
   import { addDays } from '../lib/history';
+  import { pinch } from '../lib/pinch';
   import DetailChart from './DetailChart.svelte';
+  import Explain from './Explain.svelte';
+  import ZoomBar from './ZoomBar.svelte';
 
   interface Props {
     day: number;
@@ -138,42 +142,54 @@
   };
   const ROW: Record<SleepStage, number> = { 5: 0, 4: 1, 2: 2, 3: 3 };
 
-  const nightTicks = $derived(
-    sleep
-      ? [
-          { t: sleep.start, label: clock.format(sleep.start) },
-          { t: sleep.end, label: clock.format(sleep.end) }
-        ]
-      : []
-  );
   const dayEnd = $derived(addDays(day, 1));
-  const hourAt = (h: number) => {
-    const d = new Date(day);
-    d.setHours(h, 0, 0, 0);
-    return d.getTime();
-  };
-  const dayTicks = $derived([
-    { t: day, label: 'minuit' },
-    { t: hourAt(6), label: '6 h' },
-    { t: hourAt(12), label: 'midi' },
-    { t: hourAt(18), label: '18 h' },
-    { t: dayEnd, label: 'minuit' }
-  ]);
 
-  // --- Les phases de la nuit, lisibles au doigt ---
+  // --- Les phases de la nuit, lisibles au doigt, à rapprocher à deux doigts ---
   const HW = 340;
   const HH = 132;
   const ROW_H = 30;
   let phase = $state<StageSegment | null>(null);
+  let phaseZoom = $state.raw<Span | null>(null);
+  let phasePinching = $state(false);
 
-  const hx = (t: number) => (sleep ? ((t - sleep.start) / (sleep.end - sleep.start || 1)) * HW : 0);
+  // Une autre nuit, ou la même arrêtée à un autre réveil : on repart de toute la nuit
+  $effect.pre(() => {
+    void sleep?.start;
+    void sleep?.end;
+    phaseZoom = null;
+    phase = null;
+  });
+
+  const phaseBounds = $derived(sleep ? { from: sleep.start, to: sleep.end } : { from: 0, to: 1 });
+  const phaseView = $derived(phaseZoom ? clampView(phaseZoom, phaseBounds) : phaseBounds);
+  const phaseShown = $derived(sleep ? sleep.segments.filter((s) => s.to > phaseView.from && s.from < phaseView.to) : []);
+
+  const hx = (t: number) => ((t - phaseView.from) / (phaseView.to - phaseView.from || 1)) * HW;
 
   function readPhase(e: PointerEvent) {
-    if (!sleep) return;
+    if (!sleep || phasePinching) return;
     const box = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const t = sleep.start + ((e.clientX - box.left) / box.width) * (sleep.end - sleep.start);
+    const t = phaseView.from + ((e.clientX - box.left) / box.width) * (phaseView.to - phaseView.from);
     phase = sleep.segments.find((s) => t >= s.from && t < s.to) ?? null;
   }
+
+  function setPhaseView(next: Span) {
+    phase = null;
+    phaseZoom = next.from <= phaseBounds.from && next.to >= phaseBounds.to ? null : next;
+  }
+
+  const phaseGesture = $derived({
+    left: 0,
+    right: 1,
+    view: () => phaseView,
+    bounds: () => phaseBounds,
+    minSpan: () => 30 * 60_000,
+    onview: setPhaseView,
+    onpinch: (active: boolean) => {
+      phasePinching = active;
+      if (active) phase = null;
+    }
+  });
 
   const phaseText = $derived(
     phase
@@ -238,11 +254,12 @@
           viewBox="0 0 {HW} {HH}"
           role="img"
           aria-label={`Phases de la nuit : ${sleep.stages.map((s) => `${s.name} ${formatDuration(s.minutes)}`).join(', ')}.`}
+          use:pinch={phaseGesture}
           onpointermove={readPhase}
           onpointerdown={readPhase}
           onpointerleave={() => (phase = null)}
         >
-          {#each sleep.segments as s (s.from)}
+          {#each phaseShown as s (s.from)}
             <rect
               class:dim={phase != null && phase.from !== s.from}
               x={hx(s.from)}
@@ -254,7 +271,10 @@
             />
           {/each}
         </svg>
-        <p class="ends"><span>{clock.format(sleep.start)}</span><span>{clock.format(sleep.end)}</span></p>
+        <p class="ends"><span>{clock.format(phaseView.from)}</span><span>{clock.format(phaseView.to)}</span></p>
+        {#if sleep.end - sleep.start > 30 * 60_000}
+          <ZoomBar view={phaseView} bounds={phaseBounds} name="phases de la nuit" onview={setPhaseView} />
+        {/if}
       </figure>
 
       <ul class="stages">
@@ -267,6 +287,7 @@
           </li>
         {/each}
       </ul>
+      <Explain id="nuit" />
 
       {#if sleep.hr.length}
         <section class="series">
@@ -278,9 +299,9 @@
             to={sleep.end}
             color="var(--heart)"
             format={bpm}
-            ticks={nightTicks}
             label={`Pouls pendant la nuit : ${sleep.hrRange.avg} bpm en moyenne, de ${sleep.hrRange.min} à ${sleep.hrRange.max}.`}
           />
+          <Explain id="poulsNuit" />
         </section>
       {/if}
       {#if sleep.hrv.length}
@@ -293,9 +314,9 @@
             color="var(--breath)"
             format={ms}
             gap={3 * 3_600_000}
-            ticks={nightTicks}
             label={`Variabilité pendant la nuit : ${sleep.hrvAvg} millisecondes en moyenne.`}
           />
+          <Explain id="variabilite" />
         </section>
       {/if}
       {#if sleep.spo2.length}
@@ -309,9 +330,9 @@
             domain={[80, 100]}
             color="var(--mood-low)"
             format={pct}
-            ticks={nightTicks.length ? [{ t: sleep.spo2[0].at, label: nightTicks[0].label }, { t: sleep.spo2.at(-1)!.at + 3_600_000, label: nightTicks[1].label }] : []}
             label={`Oxygène pendant la nuit : ${sleep.spo2Avg} % en moyenne.`}
           />
+          <Explain id="oxygene" />
         </section>
       {/if}
     {:else}
@@ -331,13 +352,13 @@
         mark={adjusted ? wake?.at : null}
         color="var(--heart)"
         format={bpm}
-        ticks={dayTicks}
         label={`Pouls du jour : ${heart.avg} bpm en moyenne, de ${heart.min} à ${heart.max}.`}
       />
       <p class="calm">
         {heart.points.length} mesures de la bague. Dernière : {heart.last?.value} bpm à {clock.format(heart.last?.at ?? day)}.
         {#if adjusted && wake}Le pointillé marque ton réveil.{/if}
       </p>
+      <Explain id="coeur" />
     {:else}
       <p class="calm">Pas de pouls relevé pour ce jour.</p>
     {/if}
@@ -359,7 +380,6 @@
           domain={vital.domain}
           slot={vital.slot}
           gap={vital.gap}
-          ticks={dayTicks}
           label={`${vital.name} du jour : ${vitalDay.avg} ${vital.unit} en moyenne, de ${vitalDay.min} à ${vitalDay.max}.`}
         />
       {/key}
@@ -372,6 +392,9 @@
           </li>
         {/each}
       </ul>
+      {#key tab}
+        <Explain id={tab === 'hrv' ? 'variabilite' : tab === 'spo2' ? 'oxygene' : 'stress'} />
+      {/key}
     {:else}
       <p class="calm">Pas de mesure pour ce jour.</p>
     {/if}
@@ -387,9 +410,9 @@
       to={dayEnd}
       color="var(--grass)"
       format={steps}
-      ticks={dayTicks}
       label={`Pas du jour : ${moves.steps} au total.`}
     />
+    <Explain id="activite" />
   {:else}
     <p class="calm">Pas d'activité relevée pour ce jour.</p>
   {/if}
