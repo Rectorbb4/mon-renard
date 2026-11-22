@@ -1,0 +1,192 @@
+// Le détail d'une journée, calculé comme le montre QRing : la nuit par phases (en part du temps au lit),
+// le pouls moyen, le plus bas et le plus haut, la variabilité et l'oxygène de la nuit, les pas heure par heure.
+
+import type { HealthMetric, HealthSample, SleepNight, SleepStage } from '../data/types';
+import { stageMinutes, stageSegments, type StageSegment } from './healthDays';
+import { addDays } from './history';
+
+export interface Point {
+  at: number;
+  value: number;
+}
+
+export interface Range {
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+const HALF_HOUR = 30 * 60_000;
+const HOUR = 60 * 60_000;
+
+function pointsOf(samples: HealthSample[], metric: HealthMetric, from: number, to: number): Point[] {
+  return samples
+    .filter((s) => s.metric === metric && s.at >= from && s.at <= to)
+    .map(({ at, value }) => ({ at, value }))
+    .sort((a, b) => a.at - b.at);
+}
+
+export function rangeOf(points: Point[]): Range {
+  if (!points.length) return { avg: null, min: null, max: null };
+  const v = points.map((p) => p.value);
+  return {
+    avg: Math.round(v.reduce((a, b) => a + b, 0) / v.length),
+    min: Math.min(...v),
+    max: Math.max(...v)
+  };
+}
+
+export interface StageLine {
+  stage: SleepStage;
+  name: string;
+  minutes: number;
+  /** Part du temps au lit, en %. */
+  share: number;
+}
+
+export interface NightDetail {
+  start: number;
+  end: number;
+  /** Minutes entre le coucher et le lever. */
+  inBed: number;
+  /** Minutes dormies, sans les moments éveillés. */
+  asleep: number;
+  stages: StageLine[];
+  segments: StageSegment[];
+  hr: Point[];
+  hrRange: Range;
+  hrv: Point[];
+  hrvAvg: number | null;
+  spo2: Point[];
+  spo2Avg: number | null;
+}
+
+export const STAGE_NAMES: Record<SleepStage, string> = { 5: 'Éveillé', 4: 'Paradoxal', 2: 'Léger', 3: 'Profond' };
+
+export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail {
+  const t = stageMinutes(n);
+  const total = t.asleep + t.awake || 1;
+  const line = (stage: SleepStage, minutes: number): StageLine => ({
+    stage,
+    name: STAGE_NAMES[stage],
+    minutes,
+    share: Math.round((minutes / total) * 100)
+  });
+  const hr = pointsOf(samples, 'hr', n.start, n.end);
+  // La case de la variabilité couvre une demi-heure et celle de l'oxygène une heure : celle du coucher compte
+  const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, n.end);
+  const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, n.end);
+  return {
+    start: n.start,
+    end: n.end,
+    inBed: Math.round((n.end - n.start) / 60_000),
+    asleep: t.asleep,
+    stages: [line(5, t.awake), line(4, t.rem), line(2, t.light), line(3, t.deep)],
+    segments: stageSegments(n),
+    hr,
+    hrRange: rangeOf(hr),
+    hrv,
+    hrvAvg: rangeOf(hrv).avg,
+    spo2,
+    spo2Avg: rangeOf(spo2).avg
+  };
+}
+
+export interface HeartDetail extends Range {
+  points: Point[];
+  last: Point | null;
+}
+
+/** Le pouls relevé par la bague ce jour-là, de minuit à minuit. */
+export function dayHeart(day: number, samples: HealthSample[]): HeartDetail {
+  const points = pointsOf(samples, 'hr', day, addDays(day, 1) - 1);
+  return { ...rangeOf(points), points, last: points.at(-1) ?? null };
+}
+
+export interface ActivityDetail {
+  steps: number;
+  meters: number;
+  /** Pas par heure, seulement les heures où il y en a. */
+  hours: Point[];
+}
+
+export function dayActivity(day: number, samples: HealthSample[]): ActivityDetail {
+  const end = addDays(day, 1) - 1;
+  const quarter = pointsOf(samples, 'steps', day, end);
+  const bins = new Map<number, number>();
+  for (const p of quarter) {
+    const d = new Date(p.at);
+    d.setMinutes(0, 0, 0);
+    bins.set(d.getTime(), (bins.get(d.getTime()) ?? 0) + p.value);
+  }
+  return {
+    steps: quarter.reduce((a, p) => a + p.value, 0),
+    meters: pointsOf(samples, 'meters', day, end).reduce((a, p) => a + p.value, 0),
+    hours: [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([at, value]) => ({ at, value }))
+  };
+}
+
+export interface DayMetric extends Range {
+  points: Point[];
+}
+
+/** Une mesure sur la journée. L'oxygène garde le plus bas et le plus haut réels de chaque heure. */
+export function dayMetric(day: number, samples: HealthSample[], metric: HealthMetric): DayMetric {
+  const end = addDays(day, 1);
+  const kept = samples.filter((s) => s.metric === metric && s.at >= day && s.at < end).sort((a, b) => a.at - b.at);
+  const points = kept.map(({ at, value }) => ({ at, value }));
+  if (!kept.length) return { ...rangeOf([]), points };
+  return {
+    avg: rangeOf(points).avg,
+    min: Math.min(...kept.map((s) => s.min ?? s.value)),
+    max: Math.max(...kept.map((s) => s.max ?? s.value)),
+    points
+  };
+}
+
+export interface ZoneDef {
+  name: string;
+  range: string;
+  from: number;
+  to: number;
+}
+
+export interface ZoneShare extends ZoneDef {
+  share: number;
+}
+
+export const HRV_ZONES: ZoneDef[] = [
+  { name: 'Faible', range: 'moins de 30', from: 0, to: 29 },
+  { name: 'Normal', range: '30 à 60', from: 30, to: 60 },
+  { name: 'Bon', range: '61 à 101', from: 61, to: 101 },
+  { name: 'Excellent', range: 'plus de 101', from: 102, to: Infinity }
+];
+
+export const SPO2_ZONES: ZoneDef[] = [
+  { name: 'Moins de 95 %', range: '', from: 0, to: 94 },
+  { name: '95 à 97 %', range: '', from: 95, to: 97 },
+  { name: '98 % ou plus', range: '', from: 98, to: 100 }
+];
+
+export const STRESS_ZONES: ZoneDef[] = [
+  { name: 'Détendu', range: '0 à 29', from: 0, to: 29 },
+  { name: 'Normal', range: '30 à 59', from: 30, to: 59 },
+  { name: 'Moyen', range: '60 à 79', from: 60, to: 79 },
+  { name: 'Élevé', range: '80 à 100', from: 80, to: 100 }
+];
+
+/** La part des mesures dans chaque zone. Les arrondis tombent toujours juste sur 100 %. */
+export function zonesOf(points: Point[], defs: ZoneDef[]): ZoneShare[] {
+  if (!points.length) return defs.map((d) => ({ ...d, share: 0 }));
+  const exact = defs.map((d) => (points.filter((p) => p.value >= d.from && p.value <= d.to).length / points.length) * 100);
+  const share = exact.map(Math.floor);
+  const rest = Math.round(exact.reduce((a, b) => a + b, 0)) - share.reduce((a, b) => a + b, 0);
+  const order = exact.map((v, i) => ({ i, left: v - share[i] })).sort((a, b) => b.left - a.left);
+  for (let k = 0; k < rest; k++) share[order[k].i]++;
+  return defs.map((d, i) => ({ ...d, share: share[i] }));
+}
+
+/** « 0,02 km ». */
+export function formatKm(meters: number): string {
+  return `${(meters / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
+}

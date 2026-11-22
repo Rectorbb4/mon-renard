@@ -2,6 +2,7 @@
   // Suivi : la journée en coupe (le terrier), chaque mesure comparée à ton habitude,
   // et ce qui bouge ensemble entre ton humeur et ton corps.
   import { untrack } from 'svelte';
+  import DayDetails from '../components/DayDetails.svelte';
   import FourWeeks from '../components/FourWeeks.svelte';
   import MomentsCard from '../components/MomentsCard.svelte';
   import Terrier from '../components/Terrier.svelte';
@@ -342,6 +343,10 @@
         </ol>
       {/if}
     </section>
+  {/if}
+
+  {#if loaded && hasMeasures}
+    <DayDetails day={selected} {night} samples={loaded.samples} />
   {/if}
 
   {#if loaded}
