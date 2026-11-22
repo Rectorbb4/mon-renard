@@ -147,6 +147,13 @@
         </p>
       </div>
 
+      {#if sleep.wake}
+        <p class="wake">
+          <strong>Réveil probable vers {clock.format(sleep.wake.at)}, d'après ton pouls.</strong>
+          Environ {formatDuration(sleep.wake.asleep)} de sommeil, puis {formatDuration(sleep.wake.lingered)} au lit. La bague compte encore ce temps comme du sommeil.
+        </p>
+      {/if}
+
       <figure class="phases">
         <p class="readout" aria-live="off">{phaseText}</p>
         <svg
@@ -157,6 +164,9 @@
           onpointerdown={readPhase}
           onpointerleave={() => (phase = null)}
         >
+          {#if sleep.wake}
+            <rect class="after-wake" x={hx(sleep.wake.at)} y="0" width={HW - hx(sleep.wake.at)} height={HH} />
+          {/if}
           {#each sleep.segments as s (s.from)}
             <rect
               class:dim={phase != null && phase.from !== s.from}
@@ -168,6 +178,9 @@
               style:fill={STAGE_COLOR[s.stage]}
             />
           {/each}
+          {#if sleep.wake}
+            <line class="wake-line" x1={hx(sleep.wake.at)} x2={hx(sleep.wake.at)} y1="0" y2={HH} />
+          {/if}
         </svg>
         <p class="ends"><span>{clock.format(sleep.start)}</span><span>{clock.format(sleep.end)}</span></p>
       </figure>
@@ -186,11 +199,14 @@
       {#if sleep.hr.length}
         <section class="series">
           <h3>Pouls moyen de la nuit <strong>{bpm(sleep.hrRange.avg!)}</strong></h3>
-          <p class="range">De {sleep.hrRange.min} à {sleep.hrRange.max} bpm</p>
+          <p class="range">
+            De {sleep.hrRange.min} à {sleep.hrRange.max} bpm{#if sleep.wake}. Le pointillé marque ton réveil probable{/if}
+          </p>
           <DetailChart
             points={sleep.hr}
             from={sleep.start}
             to={sleep.end}
+            mark={sleep.wake?.at}
             color="var(--heart)"
             format={bpm}
             ticks={nightTicks}
@@ -390,6 +406,32 @@
     width: 100%;
     height: auto;
     touch-action: pan-y;
+  }
+
+  .wake {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.35;
+  }
+
+  .wake strong {
+    display: block;
+    color: var(--fg);
+  }
+
+  .after-wake {
+    fill: var(--fg);
+    opacity: 0.07;
+  }
+
+  .wake-line {
+    stroke: var(--fg);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: 0.75;
   }
 
   .phases rect.dim {

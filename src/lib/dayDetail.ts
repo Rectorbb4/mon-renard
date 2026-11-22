@@ -44,6 +44,52 @@ export interface StageLine {
   share: number;
 }
 
+/** Le moment où le corps s'est vraiment réveillé, même si la bague compte encore du sommeil au lit. */
+export interface WakeEstimate {
+  at: number;
+  /** Minutes dormies avant ce réveil. */
+  asleep: number;
+  /** Minutes passées au lit ensuite. */
+  lingered: number;
+}
+
+const WAKE_WINDOW = 3 * HOUR;
+const WAKE_NEAR = 10 * 60_000;
+const WAKE_MIN_LINGER = 15 * 60_000;
+/** Le pic doit dépasser le pouls habituel de la nuit d'autant. */
+const WAKE_RISE = 12;
+/** Après le pic, le pouls doit rester au-dessus de celui de l'heure d'avant d'autant. */
+const WAKE_HELD = 4;
+
+function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * Un moment éveillé en fin de nuit, avec un pic de pouls, après lequel le pouls ne redescend pas.
+ * Un réveil suivi d'un rendormissement ne compte pas : le pouls y retrouve son niveau de sommeil.
+ */
+export function wakeFromPulse(d: { start: number; end: number; segments: StageSegment[]; hr: Point[] }): WakeEstimate | null {
+  if (d.hr.length < 24) return null;
+  const usual = median(d.hr.map((p) => p.value));
+  for (const s of d.segments) {
+    if (s.stage !== 5 || s.from < d.end - WAKE_WINDOW || s.to > d.end - WAKE_MIN_LINGER) continue;
+    const peak = d.hr.find((p) => p.at >= s.from - WAKE_NEAR && p.at <= s.to + WAKE_NEAR && p.value >= usual + WAKE_RISE);
+    if (!peak) continue;
+    const before = d.hr.filter((p) => p.at < peak.at && p.at >= peak.at - HOUR).map((p) => p.value);
+    const after = d.hr.filter((p) => p.at > Math.max(peak.at, s.to)).map((p) => p.value);
+    if (before.length < 3 || after.length < 3 || median(after) < median(before) + WAKE_HELD) continue;
+    const at = Math.min(s.from, peak.at);
+    const asleep = d.segments
+      .filter((x) => x.stage !== 5 && x.from < at)
+      .reduce((sum, x) => sum + (Math.min(x.to, at) - x.from) / 60_000, 0);
+    return { at, asleep: Math.round(asleep), lingered: Math.round((d.end - at) / 60_000) };
+  }
+  return null;
+}
+
 export interface NightDetail {
   start: number;
   end: number;
@@ -53,6 +99,7 @@ export interface NightDetail {
   asleep: number;
   stages: StageLine[];
   segments: StageSegment[];
+  wake: WakeEstimate | null;
   hr: Point[];
   hrRange: Range;
   hrv: Point[];
@@ -76,13 +123,15 @@ export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail
   // La case de la variabilité couvre une demi-heure et celle de l'oxygène une heure : celle du coucher compte
   const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, n.end);
   const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, n.end);
+  const segments = stageSegments(n);
   return {
     start: n.start,
     end: n.end,
     inBed: Math.round((n.end - n.start) / 60_000),
     asleep: t.asleep,
     stages: [line(5, t.awake), line(4, t.rem), line(2, t.light), line(3, t.deep)],
-    segments: stageSegments(n),
+    segments,
+    wake: wakeFromPulse({ start: n.start, end: n.end, segments, hr }),
     hr,
     hrRange: rangeOf(hr),
     hrv,

@@ -65,6 +65,46 @@ describe('une nuit, comme dans QRing', () => {
   });
 });
 
+describe('le réveil d’après le pouls', () => {
+  const END = at(22, 7, 56);
+  const pulse = (value: (t: number) => number): HealthSample[] => {
+    const out: HealthSample[] = [];
+    for (let t = at(21, 23, 5); t <= END; t += 5 * 60_000) out.push({ metric: 'hr', at: t, value: value(t) });
+    return out;
+  };
+  const sleeping = (t: number) => 50 + (Math.round(t / 300_000) % 3);
+  const morning = (t: number) => {
+    if (t === at(22, 7, 55)) return 96;
+    if (t === at(22, 7, 20)) return 80;
+    return t > at(22, 7, 20) ? 58 : sleeping(t);
+  };
+  const withWake: [SleepStage, number][] = [[2, 200], [3, 100], [5, 3], [4, 30], [2, 100], [3, 64], [5, 7], [2, 29]];
+  const night = (s: [SleepStage, number][]): SleepNight => ({ night: DAY, start: at(21, 23, 3), end: END, stages: s });
+
+  it('repère 07:20 quand le pouls reste plus haut ensuite, au lit', () => {
+    const w = nightDetail(night(withWake), pulse(morning)).wake;
+    expect(w?.at).toBe(at(22, 7, 20));
+    expect(formatDuration(w!.asleep)).toBe('8 h 14');
+    expect(w?.lingered).toBe(36);
+  });
+
+  it('ne compte pas un réveil suivi d’un rendormissement', () => {
+    const back = (t: number) => (t === at(22, 7, 20) ? 80 : sleeping(t));
+    expect(nightDetail(night(withWake), pulse(back)).wake).toBeNull();
+  });
+
+  it('passe un faux réveil pour trouver le vrai', () => {
+    const stages: [SleepStage, number][] = [[2, 200], [3, 100], [4, 33], [2, 64], [5, 3], [2, 33], [3, 64], [5, 7], [2, 29]];
+    const value = (t: number) => (t === at(22, 5, 40) ? 78 : morning(t));
+    expect(nightDetail(night(stages), pulse(value)).wake?.at).toBe(at(22, 7, 20));
+  });
+
+  it('ne dit rien sans pic de pouls ni assez de mesures', () => {
+    expect(nightDetail(night(withWake), pulse(sleeping)).wake).toBeNull();
+    expect(nightDetail(night(withWake), pulse(morning).slice(-10)).wake).toBeNull();
+  });
+});
+
 describe('variabilité, oxygène et stress, comme dans QRing', () => {
   it('donne 37, 32 et 49 ms, tout en zone normale', () => {
     const samples: HealthSample[] = [40, 35, 32, 33, 35, 41, 34, 49, 35].map((value, i) => ({ metric: 'hrv', at: at(22, i), value }));

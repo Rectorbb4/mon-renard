@@ -18,9 +18,11 @@
     slot?: number;
     /** Au-delà de ce trou entre deux mesures, la courbe s'interrompt. */
     gap?: number;
+    /** Un instant à repérer par un trait vertical. */
+    mark?: number | null;
   }
 
-  let { points, from, to, kind = 'line', color, format, label, ticks, domain, slot = 3_600_000, gap = 20 * 60_000 }: Props = $props();
+  let { points, from, to, kind = 'line', color, format, label, ticks, domain, slot = 3_600_000, gap = 20 * 60_000, mark = null }: Props = $props();
 
   const W = 340;
   const H = 140;
@@ -84,6 +86,9 @@
       <line class="grid" x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} />
       <text class="tick" x={PAD.left - 5} y={y(v) + 4} text-anchor="end">{v}</text>
     {/each}
+    {#if mark != null}
+      <line class="mark" x1={x(mark)} x2={x(mark)} y1={PAD.top} y2={H - PAD.bottom} />
+    {/if}
     {#if kind === 'bars'}
       {#each points as p (p.at)}
         <rect
@@ -164,6 +169,13 @@
     stroke: var(--fg);
     stroke-width: 1;
     stroke-dasharray: 3 3;
+  }
+
+  .mark {
+    stroke: var(--fg);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: 0.75;
   }
 
   rect.dim {
