@@ -312,7 +312,7 @@ final class BleSensors {
     }
 
     /**
-     * Option activée : au moins quatre tapotements en trois secondes demandent une pause.
+     * Option activée : au moins quatre tapotements en cinq secondes demandent une pause.
      * Option désactivée (par défaut) : ils sont seulement comptés, rien ne vibre.
      */
     private void onRingTap(long now) {

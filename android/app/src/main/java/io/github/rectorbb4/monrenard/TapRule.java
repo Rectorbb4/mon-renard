@@ -3,13 +3,14 @@ package io.github.rectorbb4.monrenard;
 import java.util.ArrayDeque;
 
 /**
- * La pause de la bague : au moins quatre tapotements en trois secondes.
+ * La pause de la bague : au moins quatre tapotements en cinq secondes.
  * Un mouvement de la main peut envoyer la même touche qu'un tapotement : avec trois, il lançait de fausses pauses.
+ * La vraie bague n'envoie qu'environ un signal par seconde : quatre signaux ne tiennent pas en trois secondes.
  */
 final class TapRule {
 
     static final int COUNT = 4;
-    static final long WINDOW_MS = 3_000;
+    static final long WINDOW_MS = 5_000;
     /** Plus rapide qu'un vrai tapotement : un frottement ou une touche reçue deux fois ne compte qu'une fois. */
     private static final long SAME_TAP_MS = 120;
 
