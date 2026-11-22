@@ -12,19 +12,28 @@
     STAGE_NAMES,
     STRESS_ZONES,
     zonesOf,
+    type WakeEstimate,
     type ZoneDef
   } from '../lib/dayDetail';
-  import { formatDuration, type StageSegment } from '../lib/healthDays';
+  import { formatDuration, stageMinutes, type StageSegment } from '../lib/healthDays';
   import { addDays } from '../lib/history';
   import DetailChart from './DetailChart.svelte';
 
   interface Props {
     day: number;
+    /** La nuit affichée : ajustée, ou telle que la bague l'a notée. */
     night: SleepNight | null;
+    /** La nuit de la bague, pour dire ce qui a changé. */
+    ringNight: SleepNight | null;
+    wake: WakeEstimate | null;
+    adjusted: boolean;
     samples: HealthSample[];
   }
 
-  let { day, night, samples }: Props = $props();
+  let { day, night, ringNight, wake, adjusted, samples }: Props = $props();
+
+  const ringAsleep = $derived(ringNight ? stageMinutes(ringNight).asleep : null);
+  const inBed = $derived(ringNight ? Math.round((ringNight.end - ringNight.start) / 60_000) : null);
 
   type VitalId = 'hrv' | 'spo2' | 'stress';
   type Tab = 'nuit' | 'coeur' | VitalId | 'activite';
@@ -143,15 +152,17 @@
         <p class="big">{formatDuration(sleep.asleep)}</p>
         <p class="sub">
           dormies, de {clock.format(sleep.start)} à {clock.format(sleep.end)}<br />
-          {formatDuration(sleep.inBed)} au lit
+          {formatDuration(inBed ?? sleep.inBed)} au lit
         </p>
       </div>
 
-      {#if sleep.wake}
+      {#if adjusted && wake}
         <p class="wake">
-          <strong>Réveil probable vers {clock.format(sleep.wake.at)}, d'après ton pouls.</strong>
-          Environ {formatDuration(sleep.wake.asleep)} de sommeil, puis {formatDuration(sleep.wake.lingered)} au lit. La bague compte encore ce temps comme du sommeil.
+          <strong>Réveil vers {clock.format(wake.at)}, repéré à ton pouls.</strong>
+          Les {formatDuration(wake.lingered)} suivantes ne comptent plus comme du sommeil. La bague indique {formatDuration(ringAsleep)}.
         </p>
+      {:else if adjusted}
+        <p class="wake">Pas de réveil plus tôt repéré cette nuit : mêmes chiffres que la bague.</p>
       {/if}
 
       <figure class="phases">
@@ -164,9 +175,6 @@
           onpointerdown={readPhase}
           onpointerleave={() => (phase = null)}
         >
-          {#if sleep.wake}
-            <rect class="after-wake" x={hx(sleep.wake.at)} y="0" width={HW - hx(sleep.wake.at)} height={HH} />
-          {/if}
           {#each sleep.segments as s (s.from)}
             <rect
               class:dim={phase != null && phase.from !== s.from}
@@ -178,9 +186,6 @@
               style:fill={STAGE_COLOR[s.stage]}
             />
           {/each}
-          {#if sleep.wake}
-            <line class="wake-line" x1={hx(sleep.wake.at)} x2={hx(sleep.wake.at)} y1="0" y2={HH} />
-          {/if}
         </svg>
         <p class="ends"><span>{clock.format(sleep.start)}</span><span>{clock.format(sleep.end)}</span></p>
       </figure>
@@ -199,14 +204,11 @@
       {#if sleep.hr.length}
         <section class="series">
           <h3>Pouls moyen de la nuit <strong>{bpm(sleep.hrRange.avg!)}</strong></h3>
-          <p class="range">
-            De {sleep.hrRange.min} à {sleep.hrRange.max} bpm{#if sleep.wake}. Le pointillé marque ton réveil probable{/if}
-          </p>
+          <p class="range">De {sleep.hrRange.min} à {sleep.hrRange.max} bpm</p>
           <DetailChart
             points={sleep.hr}
             from={sleep.start}
             to={sleep.end}
-            mark={sleep.wake?.at}
             color="var(--heart)"
             format={bpm}
             ticks={nightTicks}
@@ -259,6 +261,7 @@
         points={heart.points}
         from={day}
         to={dayEnd}
+        mark={adjusted ? wake?.at : null}
         color="var(--heart)"
         format={bpm}
         ticks={dayTicks}
@@ -266,6 +269,7 @@
       />
       <p class="calm">
         {heart.points.length} mesures de la bague. Dernière : {heart.last?.value} bpm à {clock.format(heart.last?.at ?? day)}.
+        {#if adjusted && wake}Le pointillé marque ton réveil.{/if}
       </p>
     {:else}
       <p class="calm">Pas de pouls relevé pour ce jour.</p>
@@ -420,18 +424,6 @@
   .wake strong {
     display: block;
     color: var(--fg);
-  }
-
-  .after-wake {
-    fill: var(--fg);
-    opacity: 0.07;
-  }
-
-  .wake-line {
-    stroke: var(--fg);
-    stroke-width: 1.5;
-    stroke-dasharray: 5 4;
-    opacity: 0.75;
   }
 
   .phases rect.dim {

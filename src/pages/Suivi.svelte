@@ -3,6 +3,7 @@
   // et ce qui bouge ensemble entre ton humeur et ton corps.
   import { untrack } from 'svelte';
   import DayDetails from '../components/DayDetails.svelte';
+  import { fitNights } from '../lib/dayDetail';
   import FourWeeks from '../components/FourWeeks.svelte';
   import MomentsCard from '../components/MomentsCard.svelte';
   import Terrier from '../components/Terrier.svelte';
@@ -106,12 +107,22 @@
     return () => document.removeEventListener('visibilitychange', onVisible);
   });
 
+  /** Ajusté à ta vraie journée, ou les chiffres de la bague tels quels pour comparer avec QRing. */
+  let source = $state<'ajuste' | 'bague'>('ajuste');
+  const adjusted = $derived(source === 'ajuste');
+  const fitted = $derived(loaded ? fitNights(loaded.nights, loaded.samples) : []);
+  const shownNights = $derived(adjusted ? fitted.map((f) => f.night) : (loaded?.nights ?? []));
+
   const days = $derived(
-    loaded ? buildDays(loaded, addDays(today, -LOADED_DAYS), addDays(today, 1)) : ([] as DayStat[])
+    loaded
+      ? buildDays({ ...loaded, nights: shownNights }, addDays(today, -LOADED_DAYS), addDays(today, 1))
+      : ([] as DayStat[])
   );
   const index = $derived(days.findIndex((d) => d.day === selected));
   const stat = $derived(index >= 0 ? days[index] : null);
-  const night = $derived(loaded?.nights.find((n) => n.night === selected) ?? null);
+  const night = $derived(shownNights.find((n) => n.night === selected) ?? null);
+  const ringNight = $derived(loaded?.nights.find((n) => n.night === selected) ?? null);
+  const wake = $derived(fitted.find((f) => f.night.night === selected)?.wake ?? null);
   const hasMeasures = $derived(!!loaded && (loaded.samples.length > 0 || loaded.nights.length > 0));
 
   const windowFrom = $derived(addDays(selected, -1));
@@ -119,7 +130,8 @@
   const inWindow = <T extends { at: number }>(list: T[]) => list.filter((x) => x.at >= windowFrom && x.at < windowTo);
 
   const pulse = $derived(
-    pulseSeries(inWindow((loaded?.samples ?? []).filter((s) => s.metric === 'hr')), belt)
+    // L'onglet Bague ne montre que ce que la bague a mesuré, sans la ceinture
+    pulseSeries(inWindow((loaded?.samples ?? []).filter((s) => s.metric === 'hr')), adjusted ? belt : [])
   );
   const stepsNow = $derived(inWindow((loaded?.samples ?? []).filter((s) => s.metric === 'steps')));
   const dayCheckins = $derived(inWindow(loaded?.checkins ?? []));
@@ -278,6 +290,20 @@
     {/if}
   </header>
 
+  {#if hasMeasures}
+    <div class="source">
+      <div class="source-tabs" role="group" aria-label="Origine des données">
+        <button type="button" aria-pressed={adjusted} onclick={() => (source = 'ajuste')}>Ajusté à toi</button>
+        <button type="button" aria-pressed={!adjusted} onclick={() => (source = 'bague')}>Bague</button>
+      </div>
+      <p>
+        {adjusted
+          ? 'Ta nuit s’arrête à ton vrai réveil, repéré à ton pouls.'
+          : 'Les chiffres de la bague, sans correction, pour comparer avec QRing.'}
+      </p>
+    </div>
+  {/if}
+
   {#if ringSync.running && ringSync.total}
     <progress max={ringSync.total} value={ringSync.done} aria-label="Relevé de la bague"></progress>
   {/if}
@@ -346,11 +372,11 @@
   {/if}
 
   {#if loaded && hasMeasures}
-    <DayDetails day={selected} {night} samples={loaded.samples} />
+    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} />
   {/if}
 
   {#if loaded}
-    <MomentsCard events={loaded.events} samples={loaded.samples} checkins={loaded.checkins} nights={loaded.nights} />
+    <MomentsCard events={loaded.events} samples={loaded.samples} checkins={loaded.checkins} nights={shownNights} />
   {/if}
 
   {#if hasMeasures}
@@ -465,6 +491,40 @@
 </div>
 
 <style>
+  .source {
+    display: grid;
+    gap: 6px;
+  }
+
+  .source p {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.3;
+  }
+
+  .source-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .source-tabs button {
+    min-height: 46px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .source-tabs button[aria-pressed='true'] {
+    background: var(--fg);
+    color: var(--bg);
+  }
+
   .suivi {
     display: grid;
     gap: 16px;

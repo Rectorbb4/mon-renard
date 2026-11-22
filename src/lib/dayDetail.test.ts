@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HealthSample, SleepNight, SleepStage } from '../data/types';
-import { dayActivity, dayHeart, dayMetric, formatKm, HRV_ZONES, nightDetail, SPO2_ZONES, STRESS_ZONES, zonesOf } from './dayDetail';
-import { formatDuration } from './healthDays';
+import { dayActivity, dayHeart, dayMetric, fitNight, fitNights, formatKm, HRV_ZONES, nightDetail, SPO2_ZONES, STRESS_ZONES, zonesOf } from './dayDetail';
+import { formatDuration, stageMinutes } from './healthDays';
 import { startOfDay } from './history';
 
 // La nuit du 22 novembre 2026, avec les chiffres affichés par QRing
@@ -82,26 +82,48 @@ describe('le réveil d’après le pouls', () => {
   const night = (s: [SleepStage, number][]): SleepNight => ({ night: DAY, start: at(21, 23, 3), end: END, stages: s });
 
   it('repère 07:20 quand le pouls reste plus haut ensuite, au lit', () => {
-    const w = nightDetail(night(withWake), pulse(morning)).wake;
+    const w = fitNight(night(withWake), pulse(morning)).wake;
     expect(w?.at).toBe(at(22, 7, 20));
     expect(formatDuration(w!.asleep)).toBe('8 h 14');
     expect(w?.lingered).toBe(36);
   });
 
+  it('arrête la nuit ajustée au réveil, sans le pic du matin', () => {
+    const samples = pulse(morning);
+    const fitted = fitNight(night(withWake), samples).night;
+    expect(fitted.end).toBe(at(22, 7, 20));
+    expect(formatDuration(stageMinutes(fitted).asleep)).toBe('8 h 14');
+    expect(nightDetail(fitted, samples).hrRange.max).toBeLessThan(80);
+  });
+
+  it('ne touche pas à la nuit de la bague', () => {
+    const raw = night(withWake);
+    const copy = structuredClone(raw);
+    fitNight(raw, pulse(morning));
+    expect(raw).toEqual(copy);
+    expect(formatDuration(stageMinutes(raw).asleep)).toBe('8 h 43');
+  });
+
+  it('ajuste plusieurs nuits comme une seule', () => {
+    const samples = pulse(morning);
+    const [one] = fitNights([night(withWake)], samples);
+    expect(one).toEqual(fitNight(night(withWake), samples));
+  });
+
   it('ne compte pas un réveil suivi d’un rendormissement', () => {
     const back = (t: number) => (t === at(22, 7, 20) ? 80 : sleeping(t));
-    expect(nightDetail(night(withWake), pulse(back)).wake).toBeNull();
+    expect(fitNight(night(withWake), pulse(back)).wake).toBeNull();
   });
 
   it('passe un faux réveil pour trouver le vrai', () => {
     const stages: [SleepStage, number][] = [[2, 200], [3, 100], [4, 33], [2, 64], [5, 3], [2, 33], [3, 64], [5, 7], [2, 29]];
     const value = (t: number) => (t === at(22, 5, 40) ? 78 : morning(t));
-    expect(nightDetail(night(stages), pulse(value)).wake?.at).toBe(at(22, 7, 20));
+    expect(fitNight(night(stages), pulse(value)).wake?.at).toBe(at(22, 7, 20));
   });
 
   it('ne dit rien sans pic de pouls ni assez de mesures', () => {
-    expect(nightDetail(night(withWake), pulse(sleeping)).wake).toBeNull();
-    expect(nightDetail(night(withWake), pulse(morning).slice(-10)).wake).toBeNull();
+    expect(fitNight(night(withWake), pulse(sleeping)).wake).toBeNull();
+    expect(fitNight(night(withWake), pulse(morning).slice(-10)).wake).toBeNull();
   });
 });
 

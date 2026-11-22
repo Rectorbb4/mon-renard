@@ -90,6 +90,54 @@ export function wakeFromPulse(d: { start: number; end: number; segments: StageSe
   return null;
 }
 
+export interface FittedNight {
+  night: SleepNight;
+  wake: WakeEstimate | null;
+}
+
+/** La même nuit, arrêtée à un instant. */
+function cutAt(n: SleepNight, at: number): SleepNight {
+  const stages: SleepNight['stages'] = [];
+  let t = n.start;
+  for (const [stage, minutes] of n.stages) {
+    if (t >= at) break;
+    const keep = Math.round(Math.min(minutes, (at - t) / 60_000));
+    if (keep > 0) stages.push([stage, keep]);
+    t += minutes * 60_000;
+  }
+  return { ...n, end: at, stages };
+}
+
+function fit(n: SleepNight, hr: Point[]): FittedNight {
+  const wake = wakeFromPulse({ start: n.start, end: n.end, segments: stageSegments(n), hr });
+  return wake ? { night: cutAt(n, wake.at), wake } : { night: n, wake: null };
+}
+
+/** La nuit ajustée : elle s'arrête au vrai réveil. Sans réveil repéré, c'est la nuit de la bague. */
+export function fitNight(n: SleepNight, samples: HealthSample[]): FittedNight {
+  return fit(n, pointsOf(samples, 'hr', n.start, n.end));
+}
+
+function firstAt(points: Point[], t: number): number {
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].at < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Toutes les nuits d'un coup, sans relire tout le pouls pour chacune. */
+export function fitNights(nights: SleepNight[], samples: HealthSample[]): FittedNight[] {
+  const hr = samples
+    .filter((s) => s.metric === 'hr')
+    .map(({ at, value }) => ({ at, value }))
+    .sort((a, b) => a.at - b.at);
+  return nights.map((n) => fit(n, hr.slice(firstAt(hr, n.start), firstAt(hr, n.end + 1))));
+}
+
 export interface NightDetail {
   start: number;
   end: number;
@@ -99,7 +147,6 @@ export interface NightDetail {
   asleep: number;
   stages: StageLine[];
   segments: StageSegment[];
-  wake: WakeEstimate | null;
   hr: Point[];
   hrRange: Range;
   hrv: Point[];
@@ -119,10 +166,12 @@ export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail
     minutes,
     share: Math.round((minutes / total) * 100)
   });
-  const hr = pointsOf(samples, 'hr', n.start, n.end);
+  // La mesure prise à l'instant du réveil n'appartient plus au sommeil
+  const last = n.end - 1;
+  const hr = pointsOf(samples, 'hr', n.start, last);
   // La case de la variabilité couvre une demi-heure et celle de l'oxygène une heure : celle du coucher compte
-  const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, n.end);
-  const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, n.end);
+  const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, last);
+  const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, last);
   const segments = stageSegments(n);
   return {
     start: n.start,
@@ -131,7 +180,6 @@ export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail
     asleep: t.asleep,
     stages: [line(5, t.awake), line(4, t.rem), line(2, t.light), line(3, t.deep)],
     segments,
-    wake: wakeFromPulse({ start: n.start, end: n.end, segments, hr }),
     hr,
     hrRange: rangeOf(hr),
     hrv,
