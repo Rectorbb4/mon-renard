@@ -2,7 +2,7 @@
 // Pour ajouter une table plus tard, créer une nouvelle version sans toucher aux précédentes.
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
-import type { CheckIn, FeltEvent, HealthMetric, HealthSample, Profile, SleepNight, WakeNote } from './types';
+import type { CheckIn, Clue, FeltEvent, Goals, HealthMetric, HealthSample, Profile, Reward, RewardKind, SleepNight, WakeNote } from './types';
 
 export class RenardDB extends Dexie {
   profiles!: EntityTable<Profile, 'id'>;
@@ -13,6 +13,11 @@ export class RenardDB extends Dexie {
   nights!: Table<SleepNight, number>;
   /** Les heures de réveil corrigées à la main : à part, car chaque relevé remplace la nuit de la bague. */
   wakes!: Table<WakeNote, number>;
+  goals!: Table<Goals, number>;
+  /** Les noisettes gagnées : jamais retirées. */
+  rewards!: Table<Reward, [number, RewardKind]>;
+  /** Le carnet d'indices. */
+  clues!: Table<Clue, string>;
 
   constructor(name = 'mon-renard') {
     super(name);
@@ -27,6 +32,11 @@ export class RenardDB extends Dexie {
     });
     this.version(3).stores({
       wakes: 'night'
+    });
+    this.version(4).stores({
+      goals: 'id',
+      rewards: '[day+kind]',
+      clues: 'id'
     });
   }
 }

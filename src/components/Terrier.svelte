@@ -4,8 +4,11 @@
   // Sous le sol, la nuit creusée comme un terrier : plus le sommeil est profond, plus la galerie descend.
   import type { CheckIn, FeltEvent, HealthSample, SleepNight, SleepStage } from '../data/types';
   import { MOODS, moodFromScore, type MoodId } from '../fox/moods';
+  import { clampView, timeTicks, type Span } from '../lib/chartZoom';
   import { stageSegments } from '../lib/healthDays';
   import { addDays } from '../lib/history';
+  import { pinch } from '../lib/pinch';
+  import ZoomBar from './ZoomBar.svelte';
 
   interface Props {
     day: number;
@@ -63,7 +66,7 @@
   const zoomed = $derived(nightView && night != null);
   // À gauche de la galerie, on garde la place d'écrire les noms des phases
   const LABELS_PX = 70;
-  const t0 = $derived.by(() => {
+  const baseFrom = $derived.by(() => {
     if (zoomed) {
       const span = night!.end - night!.start;
       return night!.start - (span * LABELS_PX) / Math.max(120, W - LABELS_PX - 24);
@@ -71,8 +74,39 @@
     const dayStart = atHour(addDays(day, -1), 20);
     return Math.min(dayStart, night ? night.start - (LABELS_PX / W) * 30 * 3600000 : Infinity);
   });
-  const t1 = $derived(zoomed ? night!.end + 25 * 60000 : addDays(day, 1));
+  const baseTo = $derived(zoomed ? night!.end + 25 * 60000 : addDays(day, 1));
+
+  // À deux doigts : une plage plus courte dans la journée ou la nuit affichée
+  const MIN_VIEW = 60 * 60000;
+  let pinchZoom = $state.raw<Span | null>(null);
+  let pinching = $state(false);
+  const bounds = $derived({ from: baseFrom, to: baseTo });
+  const view = $derived(pinchZoom ? clampView(pinchZoom, bounds, MIN_VIEW) : bounds);
+  const closer = $derived(pinchZoom != null);
+  const t0 = $derived(view.from);
+  const t1 = $derived(view.to);
   const x = (t: number) => ((t - t0) / (t1 - t0)) * W;
+
+  function setView(next: Span) {
+    scrub = null;
+    pinchZoom = next.from <= bounds.from && next.to >= bounds.to ? null : next;
+  }
+
+  const gesture = $derived({
+    left: 0,
+    right: 1,
+    view: () => view,
+    bounds: () => bounds,
+    minSpan: () => MIN_VIEW,
+    onview: setView,
+    onpinch: (active: boolean) => {
+      pinching = active;
+      if (active) {
+        dragging = false;
+        scrub = null;
+      }
+    }
+  });
 
   const clock = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -122,20 +156,23 @@
     };
     const out: { x: number; y: number; r: number }[] = [];
     for (let i = 1; i <= 34; i++) {
-      const t = t0 + rand(i) * (t1 - t0);
+      // Les étoiles restent à leur place dans le ciel quand on zoome
+      const t = baseFrom + rand(i) * (baseTo - baseFrom);
       if (dark(t)) out.push({ x: x(t), y: 8 + rand(i + 50) * 92, r: 0.7 + rand(i + 90) * 0.7 });
     }
     return out;
   });
 
-  // --- Pouls : une crête, moyennée par dix minutes ---
+  // --- Pouls : une crête, moyennée par dix minutes, plus finement quand on se rapproche ---
   const yHr = (b: number) => G - 6 - ((Math.max(40, Math.min(160, b)) - 40) / 120) * (G - 62);
 
   const ridge = $derived.by(() => {
-    const size = 10 * 60000;
+    const hours = (t1 - t0) / 3600000;
+    const size = (hours <= 2 ? 2 : hours <= 6 ? 5 : 10) * 60000;
     const buckets = new Map<number, { sum: number; n: number }>();
     for (const p of pulse) {
-      if (p.at < t0 || p.at > t1) continue;
+      // Un peu au-delà des bords, pour que la courbe sorte du cadre au lieu de s'y arrêter
+      if (p.at < t0 - 30 * 60000 || p.at > t1 + 30 * 60000) continue;
       const k = Math.floor(p.at / size) * size;
       const b = buckets.get(k) ?? { sum: 0, n: 0 };
       b.sum += p.value;
@@ -161,7 +198,7 @@
     const size = 30 * 60000;
     const bins = new Map<number, number>();
     for (const s of steps) {
-      if (s.at < t0 || s.at > t1) continue;
+      if (s.at < t0 - size || s.at > t1 + size) continue;
       const k = Math.floor(s.at / size) * size;
       bins.set(k, (bins.get(k) ?? 0) + s.value);
     }
@@ -210,10 +247,14 @@
     const pool = deep.length ? deep : segments.filter((s) => s.stage !== 5);
     if (!pool.length) return null;
     const best = pool.reduce((a, b) => (b.to - b.from > a.to - a.from ? b : a));
-    return { x: Math.max(26, Math.min(W - 26, x((best.from + best.to) / 2))), y: DEPTH[best.stage] };
+    const at = x((best.from + best.to) / 2);
+    // De près, le renard reste dans sa chambre, même si elle sort du cadre
+    if (closer) return at > -30 && at < W + 30 ? { x: at, y: DEPTH[best.stage] } : null;
+    return { x: Math.max(26, Math.min(W - 26, at)), y: DEPTH[best.stage] };
   });
 
   const ticks = $derived.by(() => {
+    if (closer) return timeTicks(view).filter((k) => k.t > t0 + (t1 - t0) * 0.04 && k.t < t1 - (t1 - t0) * 0.04);
     if (zoomed) {
       const start = new Date(t0);
       start.setMinutes(0, 0, 0);
@@ -235,17 +276,18 @@
     return list.filter((k) => k.t >= t0 + 20 * 60000);
   });
 
-  const isToday = $derived(now >= day && now < t1);
+  const isToday = $derived(now >= day && now < baseTo);
 
   // --- Lecture au doigt ---
   function fromEvent(e: PointerEvent) {
-    if (!svg) return;
+    if (!svg || pinching) return;
     const r = svg.getBoundingClientRect();
     const px = Math.max(0, Math.min(r.width, e.clientX - r.left));
     scrub = t0 + (px / r.width) * (t1 - t0);
   }
 
   function onDown(e: PointerEvent) {
+    if (pinching) return;
     dragging = true;
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     fromEvent(e);
@@ -272,6 +314,7 @@
   $effect(() => {
     void day;
     scrub = null;
+    pinchZoom = null;
   });
 
   const reading = $derived.by(() => {
@@ -310,6 +353,7 @@
     height={H}
     role="img"
     aria-label={figure}
+    use:pinch={gesture}
     onpointerdown={onDown}
     onpointermove={onMove}
     onpointerup={onUp}
@@ -458,10 +502,11 @@
   <div class="tools">
     {#if night}
       <div class="zoom" role="group" aria-label="Échelle de la scène">
-        <button type="button" aria-pressed={!zoomed} onclick={() => { nightView = false; scrub = null; }}>Journée</button>
-        <button type="button" aria-pressed={zoomed} onclick={() => { nightView = true; scrub = null; }}>Nuit</button>
+        <button type="button" aria-pressed={!zoomed} onclick={() => { nightView = false; pinchZoom = null; scrub = null; }}>Journée</button>
+        <button type="button" aria-pressed={zoomed} onclick={() => { nightView = true; pinchZoom = null; scrub = null; }}>Nuit</button>
       </div>
     {/if}
+    <ZoomBar {view} {bounds} minSpan={MIN_VIEW} name="scène du terrier" onview={setView} />
     <p class="key">
       <span><i class="k-dot"></i>check-in</span>
       <span><i class="k-felt"></i>je le sens</span>

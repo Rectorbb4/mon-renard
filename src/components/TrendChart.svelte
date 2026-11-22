@@ -1,7 +1,10 @@
 <script lang="ts">
   // La courbe d'une mesure sur 7, 30 ou 90 jours, avec ton habitude en pointillés.
+  import { clampView, type Span } from '../lib/chartZoom';
   import type { DayStat, MetricKey } from '../lib/healthDays';
   import { dayLabel } from '../lib/history';
+  import { pinch } from '../lib/pinch';
+  import ZoomBar from './ZoomBar.svelte';
 
   interface Props {
     days: DayStat[];
@@ -16,22 +19,69 @@
     onpick: (day: number) => void;
   }
 
-  let { days, metric, name, kind, color, format, habit, selected, now, onpick }: Props = $props();
+  let { days: allDays, metric, name, kind, color, format, habit, selected, now, onpick }: Props = $props();
 
   const H = 176;
   const M = { top: 12, right: 44, bottom: 24, left: 2 };
+  /** On peut rapprocher jusqu'à 5 jours ; une courbe de 7 jours se lit déjà entière. */
+  const MIN_DAYS = 5;
 
   let width = $state(320);
   let hover = $state<number | null>(null);
   let svg = $state<SVGSVGElement>();
 
   const W = $derived(Math.max(240, width));
-  const plotW = $derived(W - M.left - M.right);
+
+  // La plage se compte en jours depuis le début de la période
+  let zoom = $state.raw<Span | null>(null);
+  let pinching = $state(false);
+  let pinched = false;
+  const bounds = $derived({ from: 0, to: Math.max(1, allDays.length) });
+  const canZoom = $derived(allDays.length > 7);
+  const minSpan = $derived(canZoom ? MIN_DAYS : bounds.to);
+  const view = $derived(zoom ? clampView(zoom, bounds, minSpan) : bounds);
+  const first = $derived(Math.max(0, Math.floor(view.from + 0.001)));
+  const days = $derived(allDays.slice(first, Math.max(first + 1, Math.ceil(view.to - 0.001))));
+
+  // Une autre période : on repart de la courbe entière
+  $effect.pre(() => {
+    void allDays.length;
+    zoom = null;
+  });
+
+  function setView(next: Span) {
+    hover = null;
+    zoom = next.from <= bounds.from && next.to >= bounds.to ? null : next;
+  }
+
+  const gesture = $derived({
+    left: M.left / W,
+    right: (W - M.right) / W,
+    view: () => view,
+    bounds: () => bounds,
+    minSpan: () => minSpan,
+    onview: setView,
+    onpinch: (active: boolean) => {
+      pinching = active;
+      if (active) {
+        pinched = true;
+        dragging = false;
+        hover = null;
+      }
+    }
+  });
+
+  const dayAt = (i: number) => allDays[Math.max(0, Math.min(allDays.length - 1, i))]?.day ?? 0;
+  const rangeText = (v: Span) =>
+    `Du ${short.format(dayAt(Math.floor(v.from + 0.001)))} au ${short.format(dayAt(Math.ceil(v.to - 0.001) - 1))}`;
+
+  const plotW =$derived(W - M.left - M.right);
   const base = H - M.bottom;
   const step = $derived(plotW / Math.max(1, days.length));
 
   const values = $derived(days.map((d) => d[metric]));
-  const known = $derived(values.filter((v): v is number => v != null));
+  // L'échelle reste celle de toute la période : la courbe ne saute pas pendant le geste
+  const known = $derived(allDays.map((d) => d[metric]).filter((v): v is number => v != null));
 
   /** Un pas de graduation rond : des heures pour le sommeil, 1, 2 ou 5 × 10ⁿ pour le reste. */
   function niceStep(range: number) {
@@ -112,18 +162,24 @@
     height={H}
     role="img"
     aria-label="{name} sur {days.length} jours"
+    use:pinch={gesture}
     onpointerdown={(e) => {
+      if (pinching) return;
+      pinched = false;
       dragging = true;
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
       hover = indexOf(e);
     }}
     onpointermove={(e) => {
-      if (dragging || e.pointerType === 'mouse') hover = indexOf(e);
+      if (!pinching && (dragging || e.pointerType === 'mouse')) hover = indexOf(e);
     }}
     onpointerup={(e) => {
       dragging = false;
-      const i = indexOf(e);
-      if (i != null && days[i]) onpick(days[i].day);
+      // Lever les doigts après un zoom ne choisit pas de jour
+      if (!pinching && !pinched) {
+        const i = indexOf(e);
+        if (i != null && days[i]) onpick(days[i].day);
+      }
       hover = null;
     }}
     onpointercancel={() => {
@@ -169,6 +225,10 @@
     {/if}
   </svg>
 
+  {#if canZoom}
+    <ZoomBar {view} {bounds} {minSpan} name="{name} par jour" {rangeText} onview={setView} />
+  {/if}
+
   {#if habit != null}
     <p class="legend"><i></i>Ton habitude : {format(Math.round(habit))}</p>
   {/if}
@@ -180,7 +240,7 @@
         <tr><th scope="col">Jour</th><th scope="col">{name}</th></tr>
       </thead>
       <tbody>
-        {#each [...days].reverse() as d (d.day)}
+        {#each [...allDays].reverse() as d (d.day)}
           {#if d[metric] != null}
             <tr><th scope="row">{dayLabel(d.day, now)}</th><td>{format(d[metric])}</td></tr>
           {/if}

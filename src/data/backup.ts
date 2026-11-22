@@ -6,7 +6,7 @@ import { WORD_MAX, ensureProfile, normalizeCheckIn } from './checkins';
 import type { RenardDB } from './db';
 import { cleanNote } from './events';
 import { cleanCapture } from './moments';
-import { HEALTH_METRICS, type CheckIn, type FeltEvent, type HealthMetric, type HealthSample, type Profile, type SleepNight, type SleepStage, type WakeNote } from './types';
+import { HEALTH_METRICS, type CheckIn, type Clue, type FeltEvent, type Goals, type HealthMetric, type HealthSample, type Profile, type Reward, type SleepNight, type SleepStage, type WakeNote } from './types';
 
 export const BACKUP_APP = 'mon-renard';
 export const BACKUP_FORMAT = 1;
@@ -32,6 +32,14 @@ export interface Backup {
   events: Omit<FeltEvent, 'id'>[];
   /** Mesures des capteurs, si l'appli en a. Les versions plus anciennes l'ignorent simplement. */
   health?: BackupHealth;
+  /** Objectifs, noisettes et carnet. Les versions plus anciennes l'ignorent simplement. */
+  den?: BackupDen;
+}
+
+export interface BackupDen {
+  goals?: Goals;
+  rewards: Reward[];
+  clues: Clue[];
 }
 
 /** Une mesure en liste courte, pour que des mois de pouls restent un petit fichier. */
@@ -60,7 +68,7 @@ function fromBackupSample(s: BackupSample): HealthSample {
 export class BackupError extends Error {}
 
 export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: string): Promise<Backup> {
-  return db.transaction('r', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes], async () => {
+  return db.transaction('r', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes, db.goals, db.rewards, db.clues], async () => {
     const profiles = (await db.profiles.toArray()).map(({ id, name, kind, createdAt }) => ({ id: id!, name, kind, createdAt }));
     const byTime = <T extends { at: number }>(a: T, b: T) => a.at - b.at;
     const checkins = (await db.checkins.toArray()).map(({ id: _id, ...c }) => c).sort(byTime);
@@ -73,6 +81,13 @@ export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: 
     if (samples.length || nights.length) {
       backup.health = { samples: samples.map(toBackupSample), nights };
       if (wakes.length) backup.health.wakes = wakes;
+    }
+    const goals = await db.goals.get(1);
+    const rewards = await db.rewards.toArray();
+    const clues = await db.clues.toArray();
+    if (goals || rewards.length || clues.length) {
+      backup.den = { rewards, clues };
+      if (goals) backup.den.goals = goals;
     }
     return backup;
   });
@@ -135,6 +150,47 @@ function parseHealth(raw: unknown): { health?: BackupHealth; invalid: number } {
   const health: BackupHealth = { samples, nights };
   if (wakes.length) health.wakes = wakes;
   return { health, invalid };
+}
+
+const REWARD_KINDS = new Set<string>(['pas', 'coucher', 'souffle']);
+const CLUE_MAX = 300;
+
+function parseGoals(g: unknown): Goals | undefined {
+  if (!isObject(g) || !isNum(g.steps) || g.steps < 500 || g.steps > 50_000) return undefined;
+  if (!isNum(g.bedtime) || g.bedtime < 0 || g.bedtime >= 1440 || !isTime(g.createdAt)) return undefined;
+  const goals: Goals = {
+    id: 1,
+    steps: g.steps,
+    stepsChangedDay: isTime(g.stepsChangedDay) ? g.stepsChangedDay : g.createdAt,
+    bedtime: Math.round(g.bedtime),
+    bedSince: isTime(g.bedSince) ? g.bedSince : g.createdAt,
+    reminder: g.reminder !== false,
+    createdAt: g.createdAt
+  };
+  if (isNum(g.stepsBefore)) goals.stepsBefore = g.stepsBefore;
+  return goals;
+}
+
+function parseDen(raw: unknown): { den?: BackupDen; invalid: number } {
+  if (!isObject(raw)) return { invalid: 0 };
+  let invalid = 0;
+  const rewards: Reward[] = [];
+  for (const r of Array.isArray(raw.rewards) ? raw.rewards : []) {
+    if (isObject(r) && isTime(r.day) && isTime(r.at) && REWARD_KINDS.has(r.kind as string)) {
+      rewards.push({ day: r.day, kind: r.kind as Reward['kind'], at: r.at });
+    } else invalid++;
+  }
+  const clues: Clue[] = [];
+  for (const c of Array.isArray(raw.clues) ? raw.clues : []) {
+    if (isObject(c) && typeof c.id === 'string' && c.id && isTime(c.at) && typeof c.text === 'string' && c.text) {
+      clues.push({ id: c.id.slice(0, CLUE_MAX), at: c.at, text: c.text.slice(0, CLUE_MAX) });
+    } else invalid++;
+  }
+  const goals = parseGoals(raw.goals);
+  if (!goals && !rewards.length && !clues.length) return { invalid };
+  const den: BackupDen = { rewards, clues };
+  if (goals) den.goals = goals;
+  return { den, invalid };
 }
 
 /** Lit et vérifie le contenu d'un fichier. Lève une BackupError avec un message clair si ce n'est pas utilisable. */
@@ -207,8 +263,10 @@ export function parseBackup(text: string): ParsedBackup {
 
   const parsedHealth = parseHealth(raw.health);
   invalid += parsedHealth.invalid;
+  const parsedDen = parseDen(raw.den);
+  invalid += parsedDen.invalid;
 
-  if (!checkins.length && !events.length && !parsedHealth.health) {
+  if (!checkins.length && !events.length && !parsedHealth.health && !parsedDen.den) {
     throw new BackupError(invalid ? 'Cette sauvegarde est abîmée : aucune ligne du journal ne peut être lue.' : 'Cette sauvegarde est vide.');
   }
 
@@ -222,6 +280,7 @@ export function parseBackup(text: string): ParsedBackup {
     events
   };
   if (parsedHealth.health) backup.health = parsedHealth.health;
+  if (parsedDen.den) backup.den = parsedDen.den;
   return { backup, invalid };
 }
 
@@ -262,7 +321,7 @@ export interface ImportResult {
 
 /** Ajoute le contenu de la sauvegarde au journal du téléphone, sans doublons et sans rien effacer. */
 export async function importBackup(db: RenardDB, backup: Backup): Promise<ImportResult> {
-  return db.transaction('rw', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes], async () => {
+  return db.transaction('rw', [db.profiles, db.checkins, db.events, db.samples, db.nights, db.wakes, db.goals, db.rewards, db.clues], async () => {
     // Chaque profil de la sauvegarde retrouve son profil sur le téléphone (même nom, même type).
     // Une sauvegarde à un seul profil va dans le profil principal, comme avant le changement de téléphone.
     const local = await db.profiles.toArray();
@@ -343,6 +402,14 @@ export async function importBackup(db: RenardDB, backup: Backup): Promise<Import
       await db.wakes.bulkPut((backup.health.wakes ?? []).filter((w) => !haveWakes.has(w.night)));
       result.measures = newSamples.length + newNights.length;
       result.already += backup.health.samples.length + backup.health.nights.length - result.measures;
+    }
+    if (backup.den) {
+      // Les noisettes s'ajoutent ; les réglages de ce téléphone restent les siens
+      const haveRewards = new Set((await db.rewards.toCollection().primaryKeys()).map(([day, kind]) => `${day}:${kind}`));
+      await db.rewards.bulkPut(backup.den.rewards.filter((r) => !haveRewards.has(`${r.day}:${r.kind}`)));
+      const haveClues = new Set(await db.clues.toCollection().primaryKeys());
+      await db.clues.bulkPut(backup.den.clues.filter((c) => !haveClues.has(c.id)));
+      if (backup.den.goals && !(await db.goals.get(1))) await db.goals.put(backup.den.goals);
     }
     return result;
   });

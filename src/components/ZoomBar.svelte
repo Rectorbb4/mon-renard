@@ -8,12 +8,16 @@
     minSpan?: number;
     /** Ce que montre le graphique, pour nommer les boutons. */
     name: string;
+    /** La plage en toutes lettres. Par défaut, des heures. */
+    rangeText?: (view: Span) => string;
     onview: (view: Span) => void;
   }
 
-  let { view, bounds, minSpan = MIN_SPAN, name, onview }: Props = $props();
-
   const clock = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const hours = (v: Span) => `De ${clock.format(v.from)} à ${clock.format(v.to)}`;
+
+  let { view, bounds, minSpan = MIN_SPAN, name, rangeText = hours, onview }: Props = $props();
+
   const whole = $derived(isWhole(view, bounds));
   const tightest = $derived(view.to - view.from <= Math.min(minSpan, bounds.to - bounds.from) + 1000);
   const middle = $derived((view.from + view.to) / 2);
@@ -28,7 +32,7 @@
     {#if whole}
       <span class="hint">Écarte deux doigts pour zoomer</span>
     {:else}
-      <span class="range">De {clock.format(view.from)} à {clock.format(view.to)}</span>
+      <span class="range">{rangeText(view)}</span>
       <button type="button" class="all" onclick={reset}>Tout voir</button>
     {/if}
   </p>

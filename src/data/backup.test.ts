@@ -111,6 +111,54 @@ describe('import', () => {
     expect((await checkInsBetween(phone, me, ...ALL)).map((c) => c.mood)).toEqual([0.2]);
     expect((await checkInsBetween(phone, leo.id!, ...ALL)).map((c) => c.mood)).toEqual([-0.2]);
   });
+
+  const goals = { id: 1 as const, steps: 7000, stepsChangedDay: 100, bedtime: 1410, bedSince: 100, reminder: false, createdAt: 100 };
+
+  it('retrouve noisettes, carnet et objectifs, sans doublons au second import', async () => {
+    const { db: oldPhone } = await phoneWithData();
+    await oldPhone.goals.put(goals);
+    await oldPhone.rewards.bulkPut([
+      { day: 200, kind: 'pas', at: 210 },
+      { day: 200, kind: 'coucher', at: 220 }
+    ]);
+    await oldPhone.clues.put({ id: 'indice-1', at: 230, text: 'Une tendance notée' });
+    const file = backupToJson(await exportBackup(oldPhone));
+
+    const phone = newDB();
+    await importBackup(phone, parseBackup(file).backup);
+    await importBackup(phone, parseBackup(file).backup);
+    expect(await phone.rewards.count()).toBe(2);
+    expect(await phone.clues.count()).toBe(1);
+    expect(await phone.goals.get(1)).toMatchObject({ steps: 7000, bedtime: 1410, reminder: false });
+  });
+
+  it('garde les réglages et noisettes déjà présents sur le téléphone', async () => {
+    const { db: oldPhone } = await phoneWithData();
+    await oldPhone.goals.put(goals);
+    await oldPhone.rewards.put({ day: 200, kind: 'pas', at: 210 });
+    const file = backupToJson(await exportBackup(oldPhone));
+
+    const phone = newDB();
+    await phone.goals.put({ ...goals, steps: 9000 });
+    await phone.rewards.put({ day: 200, kind: 'pas', at: 999 });
+    await importBackup(phone, parseBackup(file).backup);
+    expect((await phone.goals.get(1))?.steps).toBe(9000);
+    expect((await phone.rewards.toArray()).map((r) => r.at)).toEqual([999]);
+  });
+
+  it('laisse de côté une noisette illisible sans perdre le reste', () => {
+    const file = JSON.stringify({
+      app: 'mon-renard',
+      format: 1,
+      profiles: [],
+      checkins: [],
+      events: [],
+      den: { rewards: [{ day: 200, kind: 'pas', at: 210 }, { day: 200, kind: 'triche', at: 210 }], clues: [] }
+    });
+    const { backup, invalid } = parseBackup(file);
+    expect(backup.den?.rewards).toHaveLength(1);
+    expect(invalid).toBe(1);
+  });
 });
 
 describe('fichiers refusés ou abîmés', () => {

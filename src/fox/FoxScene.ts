@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MOODS, randomBetween, type Gesture, type Mood, type MoodId } from './moods';
 import { agitated } from './pulse';
+import type { SeasonId } from '../lib/season';
 
 export interface FoxSceneOptions {
   modelUrl: string;
@@ -119,6 +120,21 @@ function groundFade(size = 128): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
+/** Le pelage selon la saison : un peu plus clair l'hiver, plus roux l'automne. */
+const SEASON_COAT: Record<SeasonId, [number, number, number]> = {
+  hiver: [1.07, 1.07, 1.09],
+  printemps: [1, 1, 1],
+  ete: [1.03, 1, 0.96],
+  automne: [1, 0.93, 0.84]
+};
+
+const SEASON_FX: Record<SeasonId, { color: number; size: number; fall: number; drift: number; bob: number }> = {
+  hiver: { color: 0xffffff, size: 0.05, fall: 0.22, drift: 0.12, bob: 0.02 },
+  printemps: { color: 0xffc7d9, size: 0.05, fall: 0.12, drift: 0.2, bob: 0.05 },
+  ete: { color: 0xe8ff9c, size: 0.04, fall: 0, drift: 0.12, bob: 0.1 },
+  automne: { color: 0xe8893a, size: 0.07, fall: 0.18, drift: 0.28, bob: 0.04 }
+};
+
 export class FoxScene {
   private readonly container: HTMLElement;
   private readonly opts: FoxSceneOptions;
@@ -183,6 +199,19 @@ export class FoxScene {
   private guideFull = 0;
   /** Paupières à demi fermées (0 à 1) : renard qui somnole, pour les images du widget la nuit. */
   private drowsy = 0;
+  /** Respiration vivante : le calme visé (0 à 1) et celui déjà atteint, qui le suit lentement. */
+  private calmTarget = 0;
+  private calmMix = 0;
+  private lantern: THREE.Group | null = null;
+  private lanternGlass: THREE.MeshBasicMaterial | null = null;
+  private lanternGlow: THREE.Sprite | null = null;
+
+  // La vraie saison : le pelage change à peine, et quelques flocons, pétales, lucioles ou feuilles passent
+  private furMats: THREE.MeshStandardMaterial[] = [];
+  private seasonId: SeasonId | null = null;
+  private seasonFx: THREE.Points | null = null;
+  private seasonPos: Float32Array | null = null;
+  private seasonSeed: Float32Array | null = null;
 
   // Images du widget Android (voir setWidgetMode) : décor caché, ombre seule, boucle calculée image par image
   private decor: THREE.Object3D[] = [];
@@ -406,6 +435,7 @@ export class FoxScene {
         if (mat && 'roughness' in mat) {
           mat.roughness = Math.max(mat.roughness ?? 1, 0.75); // fourrure moins brillante
           mat.metalness = 0;
+          if (!this.furMats.includes(mat)) this.furMats.push(mat);
         }
       }
       if ((o as THREE.Bone).isBone) this.bones[o.name.replace(/_\d+$/, '')] = o as THREE.Bone;
@@ -564,6 +594,117 @@ export class FoxScene {
     this.drowsy = Math.min(1, Math.max(0, amount));
   }
 
+  /** Respiration vivante (0 = éveillé, 1 = endormi) : ses yeux se ferment et une lanterne s'allume près de lui. */
+  setCalm(level: number): void {
+    this.calmTarget = Math.min(1, Math.max(0, level));
+    if (this.calmTarget > 0 && !this.lantern) this.buildLantern();
+  }
+
+  private buildLantern(): void {
+    const group = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x2f2a26, roughness: 0.45, metalness: 0.5 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.07, 0.018, 20), metal);
+    base.position.y = 0.009;
+    this.lanternGlass = new THREE.MeshBasicMaterial({ color: 0x8a6f45 });
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.105, 20), this.lanternGlass);
+    glass.position.y = 0.07;
+    // Quatre fines montantes autour du verre
+    const barGeo = new THREE.CylinderGeometry(0.0045, 0.0045, 0.11, 6);
+    const bars = [0, 1, 2, 3].map((i) => {
+      const bar = new THREE.Mesh(barGeo, metal);
+      const a = Math.PI / 4 + (i * Math.PI) / 2;
+      bar.position.set(Math.cos(a) * 0.053, 0.07, Math.sin(a) * 0.053);
+      return bar;
+    });
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.045, 20), metal);
+    cap.position.y = 0.146;
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.004, 8, 20), metal);
+    handle.position.y = 0.19;
+    this.lanternGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: softDot(64), color: 0xffc766, transparent: true, opacity: 0, depthWrite: false, fog: false, blending: THREE.AdditiveBlending })
+    );
+    this.lanternGlow.position.y = 0.075;
+    this.lanternGlow.scale.setScalar(0.75);
+    group.add(base, glass, ...bars, cap, handle, this.lanternGlow);
+    group.position.set(-0.56, 0, 0.24);
+    group.visible = false;
+    this.scene.add(group);
+    this.decor.push(group);
+    this.lantern = group;
+  }
+
+  private updateCalm(dt: number): void {
+    if (this.calmTarget === 0 && this.calmMix <= 0.002) {
+      if (this.calmMix > 0) {
+        this.calmMix = 0;
+        this.drowsy = 0;
+        if (this.lantern) this.lantern.visible = false;
+      }
+      return;
+    }
+    this.calmMix += (this.calmTarget - this.calmMix) * (1 - Math.exp(-dt * 0.9));
+    this.drowsy = this.calmMix * 0.85;
+    if (!this.lantern || !this.lanternGlass || !this.lanternGlow) return;
+    this.lantern.visible = this.calmMix > 0.04;
+    // La lanterne apparaît éteinte, puis s'allume quand le calme s'installe
+    const lit = Math.min(1, Math.max(0, (this.calmMix - 0.3) / 0.55));
+    this.lanternGlass.color.setRGB(0.54 + 0.46 * lit, 0.44 + 0.47 * lit, 0.27 + 0.33 * lit, THREE.SRGBColorSpace);
+    (this.lanternGlow.material as THREE.SpriteMaterial).opacity = lit * 0.75;
+  }
+
+  /** Le décor de la vraie saison. Sans effet sur les images du widget, qui ne l'appellent pas. */
+  setSeason(id: SeasonId): void {
+    if (id === this.seasonId) return;
+    this.seasonId = id;
+    const [r, g, b] = SEASON_COAT[id];
+    for (const m of this.furMats) m.color.setRGB(r, g, b);
+    if (this.reducedMotion) return;
+    if (!this.seasonFx) {
+      const n = 36;
+      this.seasonPos = new Float32Array(n * 3);
+      this.seasonSeed = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        this.seasonPos[i * 3] = (Math.random() - 0.5) * 6;
+        this.seasonPos[i * 3 + 1] = Math.random() * 2.7;
+        this.seasonPos[i * 3 + 2] = (Math.random() - 0.5) * 3 - 0.4;
+        this.seasonSeed[i] = Math.random() * 100;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(this.seasonPos, 3));
+      this.seasonFx = new THREE.Points(
+        geo,
+        new THREE.PointsMaterial({ map: softDot(), size: 0.05, transparent: true, opacity: 0.8, depthWrite: false })
+      );
+      this.seasonFx.frustumCulled = false;
+      this.scene.add(this.seasonFx);
+      this.decor.push(this.seasonFx);
+    }
+    const look = SEASON_FX[id];
+    const mat = this.seasonFx.material as THREE.PointsMaterial;
+    mat.color.set(look.color);
+    mat.size = look.size;
+  }
+
+  private updateSeason(dt: number): void {
+    if (!this.seasonFx?.visible || !this.seasonPos || !this.seasonSeed || !this.seasonId) return;
+    const look = SEASON_FX[this.seasonId];
+    const p = this.seasonPos;
+    const n = p.length / 3;
+    for (let i = 0; i < n; i++) {
+      const s = this.seasonSeed[i];
+      p[i * 3] += Math.sin(this.time * 0.6 + s) * look.drift * dt;
+      p[i * 3 + 1] += (Math.cos(this.time * 0.9 + s) * look.bob - look.fall) * dt;
+      if (p[i * 3 + 1] < 0.02) {
+        p[i * 3 + 1] = look.fall > 0 ? 2.7 : 0.4;
+        p[i * 3] = (Math.random() - 0.5) * 6;
+      } else if (p[i * 3 + 1] > 2.8) p[i * 3 + 1] = 0.4;
+    }
+    this.seasonFx.geometry.attributes.position.needsUpdate = true;
+    if (this.seasonId === 'ete') {
+      (this.seasonFx.material as THREE.PointsMaterial).opacity = 0.45 + 0.4 * Math.sin(this.time * 1.7);
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -648,8 +789,10 @@ export class FoxScene {
     const b = this.blend;
 
     // 2. Décor et lumière
+    this.updateCalm(dt);
     this.updateLook();
     this.updateWeather(dt, b);
+    this.updateSeason(dt);
 
     // Respiration guidée : entrée et sortie en douceur, lumière qui suit le souffle
     this.guideMix += ((this.guide ? 1 : 0) - this.guideMix) * (1 - Math.exp(-dt * 1.5));

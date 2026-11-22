@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import type { FoxScene } from '../fox/FoxScene';
   import { MOODS, type MoodId } from '../fox/moods';
+  import { seasonOf } from '../lib/season';
 
   let {
     mood,
@@ -11,7 +12,8 @@
     reactSignal = 0,
     guide = null,
     calm = false,
-    pulse = 0
+    pulse = 0,
+    rest = 0
   }: {
     mood: MoodId;
     /** Scène moins haute, pour laisser la place au check-in. */
@@ -24,6 +26,8 @@
     guide?: (() => number) | null;
     /** Le pouls qui monte (0 à 1) : il s'agite sans changer d'humeur. */
     pulse?: number;
+    /** Respiration vivante : il se détend jusqu'à s'endormir (0 à 1). */
+    rest?: number;
   } = $props();
 
   let host: HTMLDivElement;
@@ -89,6 +93,15 @@
   $effect(() => {
     const next = pulse;
     scene?.setPulse(next);
+  });
+
+  $effect(() => {
+    const next = rest;
+    scene?.setCalm(next);
+  });
+
+  $effect(() => {
+    scene?.setSeason(seasonOf(Date.now()));
   });
 
   let lastSignal = 0;

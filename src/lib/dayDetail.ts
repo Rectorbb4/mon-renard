@@ -29,10 +29,10 @@ function pointsOf(samples: HealthSample[], metric: HealthMetric, from: number, t
 /** Une mesure de ceinture remplace celles de la bague prises dans les 3 minutes autour. */
 const BELT_REACH = 3 * 60_000;
 
-/** Le pouls d'une période : la ceinture quand elle est portée, la bague sinon. */
-function heartPoints(samples: HealthSample[], belt: HealthSample[], from: number, to: number): Point[] {
-  const ring = samples.filter((s) => s.metric === 'hr' && s.at >= from && s.at <= to);
-  if (!belt.length) return pointsOf(ring, 'hr', from, to);
+/** Une mesure sur une période : la ceinture quand elle est portée, la bague sinon. */
+function wornPoints(samples: HealthSample[], metric: HealthMetric, belt: HealthSample[], from: number, to: number): Point[] {
+  const ring = samples.filter((s) => s.metric === metric && s.at >= from && s.at <= to);
+  if (!belt.length) return pointsOf(ring, metric, from, to);
   const near = belt.filter((s) => s.at >= from - BELT_REACH && s.at <= to + BELT_REACH);
   return pulseSeries(ring, near).filter((p) => p.at >= from && p.at <= to);
 }
@@ -190,8 +190,8 @@ export interface NightDetail {
 
 export const STAGE_NAMES: Record<SleepStage, string> = { 5: 'Éveillé', 4: 'Paradoxal', 2: 'Léger', 3: 'Profond' };
 
-/** `belt` : les minutes de ceinture à préférer à la bague pour le pouls. */
-export function nightDetail(n: SleepNight, samples: HealthSample[], belt: HealthSample[] = []): NightDetail {
+/** `belt` et `beltHrv` : les minutes de ceinture à préférer à la bague pour le pouls et la variabilité. */
+export function nightDetail(n: SleepNight, samples: HealthSample[], belt: HealthSample[] = [], beltHrv: HealthSample[] = []): NightDetail {
   const t = stageMinutes(n);
   const total = t.asleep + t.awake || 1;
   const line = (stage: SleepStage, minutes: number): StageLine => ({
@@ -202,9 +202,9 @@ export function nightDetail(n: SleepNight, samples: HealthSample[], belt: Health
   });
   // La mesure prise à l'instant du réveil n'appartient plus au sommeil
   const last = n.end - 1;
-  const hr = heartPoints(samples, belt, n.start, last);
+  const hr = wornPoints(samples, 'hr', belt, n.start, last);
   // La case de la variabilité couvre une demi-heure et celle de l'oxygène une heure : celle du coucher compte
-  const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, last);
+  const hrv = wornPoints(samples, 'hrv', beltHrv, n.start - HALF_HOUR + 1, last);
   const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, last);
   const segments = stageSegments(n);
   return {
@@ -235,7 +235,7 @@ export interface HeartDetail extends Range {
 /** Le pouls de ce jour-là, de minuit à minuit : la bague, ou la ceinture quand `belt` en contient. */
 export function dayHeart(day: number, samples: HealthSample[], belt: HealthSample[] = []): HeartDetail {
   const end = addDays(day, 1) - 1;
-  const points = heartPoints(samples, belt, day, end);
+  const points = wornPoints(samples, 'hr', belt, day, end);
   const beltMinutes = belt.filter((s) => s.at >= day && s.at <= end).length;
   return { ...rangeOf(points), points, last: points.at(-1) ?? null, beltMinutes, ringCount: points.length - beltMinutes };
 }
@@ -267,9 +267,16 @@ export interface DayMetric extends Range {
   points: Point[];
 }
 
-/** Une mesure sur la journée. L'oxygène garde le plus bas et le plus haut réels de chaque heure. */
-export function dayMetric(day: number, samples: HealthSample[], metric: HealthMetric): DayMetric {
+/**
+ * Une mesure sur la journée. L'oxygène garde le plus bas et le plus haut réels de chaque heure.
+ * `belt` : les minutes de ceinture à préférer à la bague (variabilité dans la vue ajustée).
+ */
+export function dayMetric(day: number, samples: HealthSample[], metric: HealthMetric, belt: HealthSample[] = []): DayMetric {
   const end = addDays(day, 1);
+  if (belt.some((s) => s.at >= day && s.at < end)) {
+    const points = wornPoints(samples, metric, belt, day, end - 1);
+    return { ...rangeOf(points), points };
+  }
   const kept = samples.filter((s) => s.metric === metric && s.at >= day && s.at < end).sort((a, b) => a.at - b.at);
   const points = kept.map(({ at, value }) => ({ at, value }));
   if (!kept.length) return { ...rangeOf([]), points };

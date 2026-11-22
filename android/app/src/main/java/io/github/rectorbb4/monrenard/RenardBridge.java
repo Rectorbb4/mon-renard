@@ -71,6 +71,13 @@ public class RenardBridge {
         return BleSensors.get(activity).activeJson();
     }
 
+    /** Le rappel une heure avant l'heure de coucher choisie. */
+    @JavascriptInterface
+    public void setBedtimeReminder(boolean on, int bedMinutes) {
+        BedtimeReminder.configure(activity, on, bedMinutes);
+        if (on) activity.askNotificationsOnce();
+    }
+
     // ------------------------------------------------------------------ alerte « ton pouls monte » (PulseAlert)
 
     /** Réglages de l'alerte (seuil, plages horaires), en JSON. */

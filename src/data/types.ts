@@ -81,6 +81,40 @@ export interface WakeNote {
   at: number;
 }
 
+/** Tes objectifs du quotidien. Une seule ligne. */
+export interface Goals {
+  id: 1;
+  steps: number;
+  /** L'objectif de pas d'avant le dernier changement : il compte encore pour le jour du changement. */
+  stepsBefore?: number;
+  /** Minuit du jour du dernier changement de l'objectif de pas. */
+  stepsChangedDay: number;
+  /** Heure limite pour s'endormir, en minutes depuis minuit. */
+  bedtime: number;
+  /** Seules les nuits commencées après ce moment comptent pour l'heure choisie. */
+  bedSince: number;
+  /** Rappel une heure avant. */
+  reminder: boolean;
+  createdAt: number;
+}
+
+export type RewardKind = 'pas' | 'coucher' | 'souffle';
+
+/** Une noisette gagnée. Une seule par type et par jour, et elle ne se perd jamais. */
+export interface Reward {
+  /** Minuit du jour concerné (pour le coucher : le jour du réveil). */
+  day: number;
+  kind: RewardKind;
+  at: number;
+}
+
+/** Une piste notée dans le carnet du renard, gardée même si la tendance change ensuite. */
+export interface Clue {
+  id: string;
+  at: number;
+  text: string;
+}
+
 /** Ce que l'interface envoie pour créer un check-in. */
 export interface CheckInInput {
   mood: number;

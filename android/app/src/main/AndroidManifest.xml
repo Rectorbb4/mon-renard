@@ -68,6 +68,11 @@
             android:name=".PulseAlert$Receiver"
             android:exported="false" />
 
+        <!-- Rappel une heure avant l'heure de coucher choisie -->
+        <receiver
+            android:name=".BedtimeReminder"
+            android:exported="false" />
+
         <!-- Petit widget : le renard seul -->
         <receiver
             android:name=".FoxWidgetSmall"

@@ -1,6 +1,7 @@
 <script lang="ts">
   import BreathPanel from '../components/BreathPanel.svelte';
   import CheckInPanel from '../components/CheckInPanel.svelte';
+  import DenCard from '../components/DenCard.svelte';
   import FeltCard from '../components/FeltCard.svelte';
   import FoxStage from '../components/FoxStage.svelte';
   import Gauges from '../components/Gauges.svelte';
@@ -19,6 +20,7 @@
   import { install, promptInstall } from '../lib/install.svelte';
   import { feelIt, journal, startJournal } from '../lib/journal.svelte';
   import { lockScreen } from '../lib/lockScreen.svelte';
+  import { rewardBreath } from '../lib/quests.svelte';
   import { hrefFor } from '../lib/router';
   import { formatSince } from '../lib/time';
 
@@ -140,9 +142,23 @@
   /** Ouverte par l'alerte « ton pouls monte » : la séance démarre tout de suite. */
   let breathNow = $state(false);
   let guide = $state.raw<(() => number) | null>(null);
+  /** Respiration vivante : le renard se détend (0 à 1). */
+  let rest = $state(0);
+  let breathNote = $state<string | null>(null);
+
+  async function onBreathDone() {
+    // Déjà assoupi, il ne sursaute pas à la fin de la séance
+    if (rest < 0.6) reactSignal += 1;
+    try {
+      breathNote = (await rewardBreath()) ? 'Une noisette de plus pour ton terrier.' : null;
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   function openBreath(now = false) {
     breathNow = now;
+    breathNote = null;
     checking = false;
     preview = null;
     felt = null;
@@ -208,7 +224,7 @@
     </header>
   {/if}
 
-  <FoxStage {mood} compact={checking} calm={breathing} {reactSignal} {guide} pulse={breathing ? 0 : pulse} />
+  <FoxStage {mood} compact={checking} calm={breathing} {reactSignal} {guide} pulse={breathing ? 0 : pulse} rest={breathing ? rest : 0} />
 
   {#if !breathing}
   <div class="mood-line" aria-live="polite">
@@ -241,7 +257,14 @@
   {#if checking}
     <CheckInPanel previous={journal.last} onpreview={(v) => (preview = v)} ondone={closeCheckIn} />
   {:else if breathing}
-    <BreathPanel autostart={breathNow} onguide={(g) => (guide = g)} oncomplete={() => (reactSignal += 1)} onclose={closeBreath} />
+    <BreathPanel
+      autostart={breathNow}
+      note={breathNote}
+      onguide={(g) => (guide = g)}
+      oncalm={(level) => (rest = level)}
+      oncomplete={onBreathDone}
+      onclose={closeBreath}
+    />
   {:else if felt}
     <FeltCard event={felt} onclose={closeFelt} onbreathe={() => openBreath()} />
   {:else}
@@ -277,6 +300,11 @@
         <span class="breathe-sub">Inspire 4 s, expire 6 s · 1 à 3 minutes</span>
       </span>
     </button>
+
+    <!-- Jamais sur un téléphone verrouillé : le terrier raconte tes habitudes -->
+    {#if !lockScreen.over}
+      <DenCard {now} />
+    {/if}
 
     <LivePanel />
   {/if}

@@ -78,7 +78,7 @@ export const EXPLANATIONS = {
       'Elle reflète en partie la façon dont ton corps passe de l’activation au repos. Elle a tendance à monter quand tu récupères bien, et à baisser avec la fatigue, le stress, l’alcool, une maladie ou une nuit courte.'
     ],
     terms: [
-      { name: 'Moyenne, minimum, maximum', text: 'Les valeurs du jour relevées par la bague.' },
+      { name: 'Moyenne, minimum, maximum', text: 'Les valeurs du jour. Dans Ajusté à toi, la ceinture passe avant la bague quand tu la portes : elle voit chaque battement. Ton habitude et tes signaux restent calculés sur la bague, pour comparer des jours comparables.' },
       { name: 'Faible, Normal, Bon, Excellent', text: 'Les repères de QRing, avec la part des mesures dans chacun. Ce n’est pas une norme médicale : selon l’âge et la personne, une valeur basse peut être tout à fait habituelle.' }
     ],
     caution: 'Compare-la seulement à toi-même, sur plusieurs jours. Un chiffre isolé ne dit pas grand-chose.'

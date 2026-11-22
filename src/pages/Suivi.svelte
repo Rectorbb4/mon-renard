@@ -2,6 +2,7 @@
   // Suivi : la journée en coupe (le terrier), chaque mesure comparée à ton habitude,
   // et ce qui bouge ensemble entre ton humeur et ton corps.
   import { untrack } from 'svelte';
+  import CluesCard from '../components/CluesCard.svelte';
   import DayDetails from '../components/DayDetails.svelte';
   import Explain from '../components/Explain.svelte';
   import { fitNights } from '../lib/dayDetail';
@@ -11,10 +12,12 @@
   import Terrier from '../components/Terrier.svelte';
   import TrendChart from '../components/TrendChart.svelte';
   import { checkInsBetween } from '../data/checkins';
+  import { keepClues } from '../data/clues';
   import { getDB } from '../data/db';
   import { feltEventsBetween } from '../data/events';
   import { nightsBetween, samplesBetween, setWake, wakesBetween } from '../data/health';
-  import type { CheckIn, FeltEvent, HealthMetric, HealthSample, SleepNight } from '../data/types';
+  import type { CheckIn, Clue, FeltEvent, HealthMetric, HealthSample, SleepNight } from '../data/types';
+  import { findClues } from '../lib/clues';
   import {
     baseline,
     buildDays,
@@ -52,7 +55,8 @@
   let loaded = $state.raw<Loaded | null>(null);
   let failed = $state(false);
   let belt = $state.raw<HealthSample[]>([]);
-  let open = $state<MetricKey | null>(null);
+  let beltHrv = $state.raw<HealthSample[]>([]);
+  let open =$state<MetricKey | null>(null);
   let period = $state<7 | 30 | 90>(30);
 
   let ticket = 0;
@@ -96,9 +100,13 @@
     void ringSync.revision;
     const day = selected;
     let cancelled = false;
-    samplesBetween(getDB(), 'beltHr', addDays(day, -1), addDays(day, 1))
-      .then((list) => {
-        if (!cancelled) belt = list;
+    const from = addDays(day, -1);
+    const to = addDays(day, 1);
+    Promise.all([samplesBetween(getDB(), 'beltHr', from, to), samplesBetween(getDB(), 'beltHrv', from, to)])
+      .then(([hr, hrv]) => {
+        if (cancelled) return;
+        belt = hr;
+        beltHrv = hrv;
       })
       .catch(console.error);
     return () => {
@@ -291,6 +299,22 @@
   const links = $derived(relations(days.slice(-60)));
   const measuredDays = $derived(days.filter((d) => d.sleep != null || d.restHr != null || d.steps != null).length);
   const linkedDays = $derived(days.slice(-60).filter((d) => d.mood != null && (d.sleep != null || d.steps != null)).length);
+
+  // Le carnet se remplit depuis la vue ajustée : tes vraies nuits, pas les chiffres bruts de la bague
+  let clues = $state.raw<Clue[]>([]);
+  $effect(() => {
+    if (!loaded) return;
+    const found = adjusted ? findClues(days.slice(-60), loaded.events, links) : [];
+    let cancelled = false;
+    keepClues(getDB(), found)
+      .then((all) => {
+        if (!cancelled) clues = all;
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  });
 </script>
 
 <div class="suivi">
@@ -392,7 +416,7 @@
   {/if}
 
   {#if loaded && hasMeasures}
-    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} {belt} onwake={saveWake} />
+    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} {belt} {beltHrv} onwake={saveWake} />
   {/if}
 
   {#if loaded}
@@ -509,6 +533,8 @@
       {/if}
       <Explain id="ensemble" />
     </section>
+
+    <CluesCard {clues} />
 
     <p class="foot">
       Ces mesures viennent d'une bague grand public et servent à t'observer dans le temps. Elles ne remplacent ni un

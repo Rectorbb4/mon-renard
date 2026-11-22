@@ -35,11 +35,13 @@
     samples: HealthSample[];
     /** Les minutes de ceinture autour de ce jour : elles priment sur la bague dans la vue ajustée. */
     belt: HealthSample[];
+    /** La variabilité de la ceinture, minute par minute. */
+    beltHrv: HealthSample[];
     /** Enregistre ton heure de réveil ; `null` revient à celle repérée par l'appli. */
     onwake: (night: number, at: number | null) => Promise<void>;
   }
 
-  let { day, night, ringNight, wake, adjusted, samples, belt, onwake }: Props = $props();
+  let { day, night, ringNight, wake, adjusted, samples, belt, beltHrv, onwake }: Props = $props();
 
   // Ton heure de réveil, si l'appli s'est trompée
   let editingWake = $state(false);
@@ -99,7 +101,8 @@
 
   // L'onglet Bague reste sur les seuls chiffres de la bague, pour comparer avec QRing
   const worn = $derived(adjusted ? belt : []);
-  const sleep = $derived(night ? nightDetail(night, samples, worn) : null);
+  const wornHrv = $derived(adjusted ? beltHrv : []);
+  const sleep = $derived(night ? nightDetail(night, samples, worn, wornHrv) : null);
   const heart = $derived(dayHeart(day, samples, worn));
   const heartSource = $derived.by(() => {
     const rings = `${heart.ringCount} ${heart.ringCount > 1 ? 'mesures' : 'mesure'} de la bague`;
@@ -141,8 +144,11 @@
     }
   };
   const vital = $derived(tab === 'hrv' || tab === 'spo2' || tab === 'stress' ? VITALS[tab] : null);
-  const vitalDay = $derived(tab === 'hrv' || tab === 'spo2' || tab === 'stress' ? dayMetric(day, samples, tab) : null);
+  const vitalDay = $derived(
+    tab === 'hrv' || tab === 'spo2' || tab === 'stress' ? dayMetric(day, samples, tab, tab === 'hrv' ? wornHrv : []) : null
+  );
   const vitalZones = $derived(vital && vitalDay ? zonesOf(vitalDay.points, vital.zones) : []);
+  const hrvBeltMinutes = $derived(wornHrv.filter((s) => s.at >= day && s.at < addDays(day, 1)).length);
 
   const STAGE_COLOR: Record<SleepStage, string> = {
     5: 'var(--stage-awake)',
@@ -393,6 +399,9 @@
           label={`${vital.name} du jour : ${vitalDay.avg} ${vital.unit} en moyenne, de ${vitalDay.min} à ${vitalDay.max}.`}
         />
       {/key}
+      {#if tab === 'hrv' && hrvBeltMinutes}
+        <p class="calm">{hrvBeltMinutes} {hrvBeltMinutes > 1 ? 'minutes' : 'minute'} de ceinture, la bague pour le reste.</p>
+      {/if}
       <ul class="stages zones">
         {#each vitalZones as z (z.name)}
           <li>

@@ -56,6 +56,14 @@ export interface RenardAndroid {
   openLockSettings?(): void;
   /** Appli 2.7 et suivantes : instants des pauses retirées avec « Erreur » sur la notification. */
   takeErasedFelt?(): string;
+  /** Appli 2.9 et suivantes : rappel une heure avant l'heure de coucher choisie. */
+  setBedtimeReminder?(on: boolean, bedMinutes: number): void;
+}
+
+/** Le rappel de coucher (appli 2.9 et suivantes), ou null. */
+export function bedtimeBridge(): Required<Pick<RenardAndroid, 'setBedtimeReminder'>> | null {
+  const b = bridge();
+  return b && typeof b.setBedtimeReminder === 'function' ? (b as Required<Pick<RenardAndroid, 'setBedtimeReminder'>>) : null;
 }
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */

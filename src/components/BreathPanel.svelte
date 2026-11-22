@@ -4,6 +4,8 @@
   // Si l'appli passe en arrière-plan, la séance se met en pause toute seule.
   import { onMount } from 'svelte';
   import { keepScreenOnInApp } from '../lib/android';
+  import { calmLevel, calmSentence, calmSummary, calmWord, type PulseReading } from '../lib/calmGame';
+  import { live } from '../lib/live.svelte';
   import {
     DURATIONS,
     breathAt,
@@ -16,10 +18,16 @@
 
   let {
     autostart = false,
+    note = null,
     onguide,
+    oncalm,
     oncomplete,
     onclose
   }: {
+    /** Ce que la séance vient de rapporter, affiché à la fin. */
+    note?: string | null;
+    /** Le renard se détend (0 à 1), selon le temps et ton vrai pouls. */
+    oncalm?: (level: number) => void;
     /** Démarrer sans passer par le choix de la durée (après l'alerte « ton pouls monte »). */
     autostart?: boolean;
     /** Donne au renard le souffle à suivre, ou `null` pour lui rendre le sien. */
@@ -63,6 +71,20 @@
   let prevStage: BreathStage | null = null;
   let wakeLock: { release: () => Promise<void> } | null = null;
 
+  // Le vrai pouls pendant la séance (jamais celui de la démo)
+  let readings: PulseReading[] = [];
+  let startedAt = 0;
+  let lastCalmAt = 0;
+  let calm = $state(0);
+  let result = $state<string | null>(null);
+
+  $effect(() => {
+    const point = live.hrSeries.at(-1);
+    if (phase !== 'run' || live.simulated || !point) return;
+    const [at, bpm] = point;
+    if (at >= startedAt && at > (readings.at(-1)?.at ?? 0)) readings.push({ at, bpm });
+  });
+
   // À chaque étape (choix, séance, fin), le titre prend le focus pour les lecteurs d'écran
   $effect(() => {
     heading?.focus({ preventScroll: true });
@@ -73,6 +95,7 @@
     return () => {
       cancelAnimationFrame(raf);
       onguide(null);
+      oncalm?.(0);
       releaseWakeLock();
     };
   });
@@ -116,6 +139,12 @@
     elapsed = 0;
     fullness = 0;
     prevStage = null;
+    readings = [];
+    startedAt = Date.now();
+    lastCalmAt = 0;
+    calm = 0;
+    result = null;
+    oncalm?.(0);
     phase = 'run';
     onguide(() => fullness);
     keepScreenOn();
@@ -134,6 +163,15 @@
       else if (st.stage === 'out') buzz([12, 90, 12]);
       prevStage = st.stage;
     }
+    // Une fois par seconde : le renard ne revient jamais en arrière pendant la séance
+    if (now - lastCalmAt >= 1000) {
+      lastCalmAt = now;
+      const next = calmLevel(readings, startedAt, Date.now(), st.progress);
+      if (next > calm) {
+        calm = next;
+        oncalm?.(next);
+      }
+    }
     if (st.stage === 'done') return finish();
     raf = requestAnimationFrame(tick);
   }
@@ -142,6 +180,8 @@
     cancelAnimationFrame(raf);
     onguide(null);
     releaseWakeLock();
+    const summary = calmSummary(readings, startedAt, Date.now());
+    result = summary ? calmSentence(summary) : null;
     phase = 'done';
     oncomplete();
   }
@@ -207,6 +247,7 @@
           {#if s.stage === 'ready'}La première inspiration arrive…{:else if s.stage === 'in'}par le nez, en gonflant le ventre{:else}lentement, comme pour souffler une bougie sans l'éteindre{/if}
         </p>
         <p class="left">Encore {formatClock(s.remainingMs)}</p>
+        <p class="rest">{calmWord(calm)}</p>
       </div>
     </div>
     <div class="bar" role="progressbar" aria-label="Avancement de la séance" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(s.progress * 100)}>
@@ -215,6 +256,12 @@
     <button class="secondary" type="button" onclick={stop}>Arrêter</button>
   {:else}
     <h2 id="breath-title" tabindex="-1" bind:this={heading}>Bravo, {minutes} minute{minutes > 1 ? 's' : ''} de calme</h2>
+    {#if result}
+      <p class="result">{result}</p>
+    {/if}
+    {#if note}
+      <p class="note">{note}</p>
+    {/if}
     <p class="soft">Ton renard a respiré avec toi. Comment tu te sens maintenant ?</p>
     <button class="primary" type="button" onclick={() => onclose('checkin')}>Faire un check-in</button>
     <button class="secondary" type="button" onclick={start}>Recommencer</button>
@@ -372,6 +419,22 @@
   .left {
     font-size: 15px;
     font-variant-numeric: tabular-nums;
+  }
+
+  .rest {
+    color: var(--breath);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .result {
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .note {
+    color: var(--accent);
+    font-weight: 700;
   }
 
   .bar {

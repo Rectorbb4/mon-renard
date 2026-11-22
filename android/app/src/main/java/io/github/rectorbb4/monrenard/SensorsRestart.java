@@ -11,6 +11,7 @@ public class SensorsRestart extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
         if (!Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) && !Intent.ACTION_BOOT_COMPLETED.equals(action)) return;
+        BedtimeReminder.restore(context);
         BleSensors ble = BleSensors.get(context);
         ble.resumeWanted();
         if (ble.anyActive()) LiveService.startIfLive(context);
