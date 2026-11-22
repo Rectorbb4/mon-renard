@@ -55,7 +55,8 @@ export const EXPLANATIONS = {
     question: 'Pourquoi regarder le pouls de la nuit ?',
     intro: [
       'Pendant le sommeil, ton cœur ralentit. C’est le moment où ton pouls dépend le moins de ce que tu fais, donc le plus facile à comparer d’une nuit à l’autre.',
-      'Un pouls plus haut que d’habitude peut suivre un repas tardif, de l’alcool, du stress, de la fièvre ou une nuit agitée. Une courte remontée vient souvent d’un mouvement, d’un rêve ou d’un réveil.'
+      'Un pouls plus haut que d’habitude peut suivre un repas tardif, de l’alcool, du stress, de la fièvre ou une nuit agitée. Une courte remontée vient souvent d’un mouvement, d’un rêve ou d’un réveil.',
+      'Dans Ajusté à toi, cette courbe suit la ceinture si tu la portais, la bague sinon.'
     ]
   },
   coeur: {
@@ -65,7 +66,7 @@ export const EXPLANATIONS = {
       { name: 'Moyenne', text: 'Le pouls moyen de toutes les mesures du jour.' },
       { name: 'Minimum', text: 'Le plus bas du jour, souvent pendant ton sommeil.' },
       { name: 'Maximum', text: 'Le plus haut du jour, souvent pendant un effort ou une émotion.' },
-      { name: 'La courbe', text: 'Chaque point est une mesure. Un trou veut dire que la bague ne mesurait pas à ce moment-là.' },
+      { name: 'La courbe', text: 'Dans Ajusté à toi, elle suit la ceinture quand tu la portes, avec une valeur par minute, et la bague sinon. Dans Bague, elle ne montre que les mesures de la bague, plus espacées et donc plus saccadées. Un trou veut dire que rien ne mesurait à ce moment-là.' },
       { name: 'Le pointillé', text: 'L’heure de ton réveil, dans l’onglet Ajusté à toi.' }
     ],
     caution: `La bague mesure par intervalles et peut rater un pic court. En cas de palpitations, de malaise ou de douleur dans la poitrine, ${URGENCE}.`

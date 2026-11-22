@@ -2,7 +2,7 @@
 // le pouls moyen, le plus bas et le plus haut, la variabilité et l'oxygène de la nuit, les pas heure par heure.
 
 import type { HealthMetric, HealthSample, SleepNight, SleepStage } from '../data/types';
-import { stageMinutes, stageSegments, type StageSegment } from './healthDays';
+import { pulseSeries, stageMinutes, stageSegments, type StageSegment } from './healthDays';
 import { addDays } from './history';
 
 export interface Point {
@@ -24,6 +24,17 @@ function pointsOf(samples: HealthSample[], metric: HealthMetric, from: number, t
     .filter((s) => s.metric === metric && s.at >= from && s.at <= to)
     .map(({ at, value }) => ({ at, value }))
     .sort((a, b) => a.at - b.at);
+}
+
+/** Une mesure de ceinture remplace celles de la bague prises dans les 3 minutes autour. */
+const BELT_REACH = 3 * 60_000;
+
+/** Le pouls d'une période : la ceinture quand elle est portée, la bague sinon. */
+function heartPoints(samples: HealthSample[], belt: HealthSample[], from: number, to: number): Point[] {
+  const ring = samples.filter((s) => s.metric === 'hr' && s.at >= from && s.at <= to);
+  if (!belt.length) return pointsOf(ring, 'hr', from, to);
+  const near = belt.filter((s) => s.at >= from - BELT_REACH && s.at <= to + BELT_REACH);
+  return pulseSeries(ring, near).filter((p) => p.at >= from && p.at <= to);
 }
 
 export function rangeOf(points: Point[]): Range {
@@ -179,7 +190,8 @@ export interface NightDetail {
 
 export const STAGE_NAMES: Record<SleepStage, string> = { 5: 'Éveillé', 4: 'Paradoxal', 2: 'Léger', 3: 'Profond' };
 
-export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail {
+/** `belt` : les minutes de ceinture à préférer à la bague pour le pouls. */
+export function nightDetail(n: SleepNight, samples: HealthSample[], belt: HealthSample[] = []): NightDetail {
   const t = stageMinutes(n);
   const total = t.asleep + t.awake || 1;
   const line = (stage: SleepStage, minutes: number): StageLine => ({
@@ -190,7 +202,7 @@ export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail
   });
   // La mesure prise à l'instant du réveil n'appartient plus au sommeil
   const last = n.end - 1;
-  const hr = pointsOf(samples, 'hr', n.start, last);
+  const hr = heartPoints(samples, belt, n.start, last);
   // La case de la variabilité couvre une demi-heure et celle de l'oxygène une heure : celle du coucher compte
   const hrv = pointsOf(samples, 'hrv', n.start - HALF_HOUR + 1, last);
   const spo2 = pointsOf(samples, 'spo2', n.start - HOUR + 1, last);
@@ -214,12 +226,18 @@ export function nightDetail(n: SleepNight, samples: HealthSample[]): NightDetail
 export interface HeartDetail extends Range {
   points: Point[];
   last: Point | null;
+  /** Minutes venues de la ceinture. */
+  beltMinutes: number;
+  /** Mesures venues de la bague. */
+  ringCount: number;
 }
 
-/** Le pouls relevé par la bague ce jour-là, de minuit à minuit. */
-export function dayHeart(day: number, samples: HealthSample[]): HeartDetail {
-  const points = pointsOf(samples, 'hr', day, addDays(day, 1) - 1);
-  return { ...rangeOf(points), points, last: points.at(-1) ?? null };
+/** Le pouls de ce jour-là, de minuit à minuit : la bague, ou la ceinture quand `belt` en contient. */
+export function dayHeart(day: number, samples: HealthSample[], belt: HealthSample[] = []): HeartDetail {
+  const end = addDays(day, 1) - 1;
+  const points = heartPoints(samples, belt, day, end);
+  const beltMinutes = belt.filter((s) => s.at >= day && s.at <= end).length;
+  return { ...rangeOf(points), points, last: points.at(-1) ?? null, beltMinutes, ringCount: points.length - beltMinutes };
 }
 
 export interface ActivityDetail {

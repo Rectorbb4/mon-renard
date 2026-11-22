@@ -197,6 +197,42 @@ describe('une journée', () => {
     expect(dayHeart(DAY, samples)).toMatchObject({ avg: 65, min: 46, max: 96, last: { value: 96 } });
   });
 
+  describe('avec la ceinture', () => {
+    const ring: HealthSample[] = [
+      { metric: 'hr', at: at(22, 10, 0), value: 99 },
+      { metric: 'hr', at: at(22, 10, 5), value: 58 },
+      { metric: 'hr', at: at(22, 12, 0), value: 70 }
+    ];
+    const belt: HealthSample[] = [0, 1, 2, 3, 4, 5, 6].map((m) => ({ metric: 'beltHr', at: at(22, 10, m), value: 75 }));
+
+    it('remplace la bague là où la ceinture est portée, et garde la bague ailleurs', () => {
+      const h = dayHeart(DAY, ring, belt);
+      expect(h.points.map((p) => p.value)).toEqual([75, 75, 75, 75, 75, 75, 75, 70]);
+      expect(h).toMatchObject({ min: 70, max: 75, beltMinutes: 7, ringCount: 1 });
+    });
+
+    it('ne change rien sans ceinture', () => {
+      expect(dayHeart(DAY, ring, [])).toMatchObject({ min: 58, max: 99, beltMinutes: 0, ringCount: 3 });
+    });
+
+    it('ne compte pas la ceinture d’un autre jour', () => {
+      const yesterday: HealthSample[] = [{ metric: 'beltHr', at: at(21, 23, 59), value: 60 }];
+      const h = dayHeart(DAY, [{ metric: 'hr', at: at(22, 0, 1), value: 90 }], yesterday);
+      expect(h.points).toEqual([]);
+      expect(h).toMatchObject({ beltMinutes: 0, ringCount: 0 });
+    });
+
+    it('suit aussi la ceinture pendant la nuit, sans toucher à ses phases', () => {
+      const nightRing: HealthSample[] = [{ metric: 'hr', at: at(22, 2, 0), value: 88 }];
+      const nightBelt: HealthSample[] = [{ metric: 'beltHr', at: at(22, 2, 1), value: 52 }];
+      const seul = nightDetail(NIGHT, nightRing);
+      const d = nightDetail(NIGHT, nightRing, nightBelt);
+      expect(d.hr).toEqual([{ at: at(22, 2, 1), value: 52 }]);
+      expect(d.hrRange.max).toBe(52);
+      expect(d.stages).toEqual(seul.stages);
+    });
+  });
+
   it('additionne les pas par heure, et écrit la distance comme QRing', () => {
     const samples: HealthSample[] = [
       { metric: 'steps', at: at(22, 6, 15), value: 30 },

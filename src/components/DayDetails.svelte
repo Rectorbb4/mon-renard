@@ -33,11 +33,13 @@
     wake: WakeEstimate | null;
     adjusted: boolean;
     samples: HealthSample[];
+    /** Les minutes de ceinture autour de ce jour : elles priment sur la bague dans la vue ajustée. */
+    belt: HealthSample[];
     /** Enregistre ton heure de réveil ; `null` revient à celle repérée par l'appli. */
     onwake: (night: number, at: number | null) => Promise<void>;
   }
 
-  let { day, night, ringNight, wake, adjusted, samples, onwake }: Props = $props();
+  let { day, night, ringNight, wake, adjusted, samples, belt, onwake }: Props = $props();
 
   // Ton heure de réveil, si l'appli s'est trompée
   let editingWake = $state(false);
@@ -95,8 +97,16 @@
   ];
   let tab = $state<Tab>('nuit');
 
-  const sleep = $derived(night ? nightDetail(night, samples) : null);
-  const heart = $derived(dayHeart(day, samples));
+  // L'onglet Bague reste sur les seuls chiffres de la bague, pour comparer avec QRing
+  const worn = $derived(adjusted ? belt : []);
+  const sleep = $derived(night ? nightDetail(night, samples, worn) : null);
+  const heart = $derived(dayHeart(day, samples, worn));
+  const heartSource = $derived.by(() => {
+    const rings = `${heart.ringCount} ${heart.ringCount > 1 ? 'mesures' : 'mesure'} de la bague`;
+    if (!heart.beltMinutes) return rings;
+    const minutes = `${heart.beltMinutes} ${heart.beltMinutes > 1 ? 'minutes' : 'minute'} de ceinture`;
+    return heart.ringCount ? `${minutes} et ${rings}` : minutes;
+  });
   const moves = $derived(dayActivity(day, samples));
 
   const clock = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -355,7 +365,7 @@
         label={`Pouls du jour : ${heart.avg} bpm en moyenne, de ${heart.min} à ${heart.max}.`}
       />
       <p class="calm">
-        {heart.points.length} mesures de la bague. Dernière : {heart.last?.value} bpm à {clock.format(heart.last?.at ?? day)}.
+        {heartSource}. Dernière : {heart.last?.value} bpm à {clock.format(heart.last?.at ?? day)}.
         {#if adjusted && wake}Le pointillé marque ton réveil.{/if}
       </p>
       <Explain id="coeur" />

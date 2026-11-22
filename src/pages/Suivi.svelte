@@ -392,7 +392,7 @@
   {/if}
 
   {#if loaded && hasMeasures}
-    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} onwake={saveWake} />
+    <DayDetails day={selected} {night} {ringNight} {wake} {adjusted} samples={loaded.samples} {belt} onwake={saveWake} />
   {/if}
 
   {#if loaded}
