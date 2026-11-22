@@ -180,8 +180,26 @@ async function recordNow(): Promise<void> {
   } catch {
     return;
   }
-  const times = raw.split(',').map(Number).filter((at) => Number.isFinite(at) && at > 0);
-  await Promise.all(times.map((at) => feelIt(at).catch((e) => console.error(e))));
+  await Promise.all(instants(raw).map((at) => feelIt(at).catch((e) => console.error(e))));
+  // « Erreur » sur la notification : la pause sort du journal, même si elle venait d'y être écrite
+  let erased = '';
+  try {
+    erased = pauseBridge()?.takeErasedFelt?.() ?? '';
+  } catch {
+    return;
+  }
+  await Promise.all(instants(erased).map((at) => cancelFeltAt(at).catch((e) => console.error(e))));
+}
+
+function instants(raw: string): number[] {
+  return raw.split(',').map(Number).filter((at) => Number.isFinite(at) && at > 0);
+}
+
+/** On a répondu à cette pause sur la notification : son écran n'a plus lieu d'être. */
+export function pauseAnswered(at: unknown): void {
+  alarm.ringing = false;
+  if (alarm.open && alarm.manual && (alarm.at == null || alarm.at === at)) alarm.open = false;
+  recordPendingPauses().catch((e) => console.error(e));
 }
 
 let pullingMoments: Promise<void> = Promise.resolve();

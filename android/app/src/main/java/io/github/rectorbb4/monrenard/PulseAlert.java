@@ -45,6 +45,9 @@ final class PulseAlert {
 
     static final String ACTION_STOP = "io.github.rectorbb4.monrenard.ALERT_STOP";
     static final String ACTION_SNOOZE = "io.github.rectorbb4.monrenard.ALERT_SNOOZE";
+    static final String ACTION_KEEP = "io.github.rectorbb4.monrenard.PAUSE_KEEP";
+    static final String ACTION_ERASE = "io.github.rectorbb4.monrenard.PAUSE_ERASE";
+    private static final String EXTRA_AT = "at";
 
     private static final long SUSTAIN_MS = 30_000;
     private static final double SHARE_ABOVE = 0.8;
@@ -79,6 +82,8 @@ final class PulseAlert {
     private volatile long lastAt;
     /** La dernière alerte a été demandée (bouton pause, geste de la bague), pas déclenchée par le pouls. */
     private volatile boolean manual;
+    /** L'instant de la dernière pause à laquelle on a répondu depuis la notification. */
+    private volatile long answeredAt;
     private long lastTrigger;
     /** Vibration seule (hors des plages horaires) : 10 secondes. */
     private static final long VIBRATE_ONLY_MS = 10_000;
@@ -225,7 +230,7 @@ final class PulseAlert {
         lastAt = now;
         if (sound) playSound();
         vibrate();
-        if (!appVisible) notifyManual();
+        if (!appVisible) notifyManual(now);
         emit("renard-alert", "{\"ringing\":true,\"manual\":true,\"from\":\"" + from + "\"}");
         main.removeCallbacks(autoStop);
         main.postDelayed(autoStop, sound ? RING_MS : VIBRATE_ONLY_MS);
@@ -236,6 +241,41 @@ final class PulseAlert {
         synchronized (prefs) {
             String s = prefs.getString("pendingFelt", "");
             if (!s.isEmpty()) prefs.edit().remove("pendingFelt").apply();
+            return s;
+        }
+    }
+
+    /** Réponse donnée sur la notification, sans ouvrir l'appli : « Oui » garde la pause, « Erreur » la retire. */
+    void answer(long at, boolean mistake) {
+        answeredAt = at;
+        if (mistake && at > 0) forgetPause(at);
+        BleSensors.log(ctx, mistake ? "pause : erreur" : "pause : oui");
+        stop(true);
+        emit("renard-alert", "{\"ringing\":false,\"answered\":true,\"at\":" + at + "}");
+    }
+
+    /** Pas encore écrite : elle ne le sera jamais. Déjà écrite : la page l'effacera à sa prochaine ouverture. */
+    private void forgetPause(long at) {
+        synchronized (prefs) {
+            StringBuilder kept = new StringBuilder();
+            for (String t : prefs.getString("pendingFelt", "").split(",")) {
+                if (t.isEmpty() || t.equals(String.valueOf(at))) continue;
+                if (kept.length() > 0) kept.append(',');
+                kept.append(t);
+            }
+            String erased = prefs.getString("erasedFelt", "");
+            prefs.edit()
+                    .putString("pendingFelt", kept.toString())
+                    .putString("erasedFelt", erased.isEmpty() ? String.valueOf(at) : erased + "," + at)
+                    .apply();
+        }
+    }
+
+    /** Instants des pauses retirées depuis la notification ; vidé à la lecture. */
+    String takeErasedFelt() {
+        synchronized (prefs) {
+            String s = prefs.getString("erasedFelt", "");
+            if (!s.isEmpty()) prefs.edit().remove("erasedFelt").apply();
             return s;
         }
     }
@@ -272,7 +312,8 @@ final class PulseAlert {
     String stateJson() {
         // La dernière alerte n'est plus d'actualité au bout de 10 minutes
         boolean recent = System.currentTimeMillis() - lastAt < 10 * 60_000L;
-        return "{\"ringing\":" + ringing + ",\"bpm\":" + (recent ? lastBpm : 0) + ",\"at\":" + lastAt + ",\"manual\":" + (recent && manual) + "}";
+        boolean answered = manual && lastAt > 0 && answeredAt == lastAt;
+        return "{\"ringing\":" + ringing + ",\"bpm\":" + (recent ? lastBpm : 0) + ",\"at\":" + lastAt + ",\"manual\":" + (recent && manual) + ",\"answered\":" + answered + "}";
     }
 
     private void playSound() {
@@ -343,14 +384,20 @@ final class PulseAlert {
     }
 
     private void notifyUser(int bpm) {
-        notify("Ton pouls monte : " + bpm, "Pause : respire avec ton renard, deux minutes.", true);
+        notify("Ton pouls monte : " + bpm, "Pause : respire avec ton renard, deux minutes.", 0);
     }
 
-    private void notifyManual() {
-        notify("Stop, on fait une pause", "Ouvre pour dire comment tu te sens, ou si c'est une erreur.", false);
+    private void notifyManual(long at) {
+        notify("Stop, on fait une pause", "C'est bien toi qui l'as demandée ?", at);
     }
 
-    private void notify(String title, String text, boolean withSnooze) {
+    private PendingIntent answerIntent(String action, int code, long at) {
+        Intent i = new Intent(ctx, Receiver.class).setAction(action).putExtra(EXTRA_AT, at);
+        return PendingIntent.getBroadcast(ctx, code, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /** `pauseAt` : l'instant d'une pause demandée, qui reçoit « Oui » et « Erreur ». 0 pour l'alerte du pouls. */
+    private void notify(String title, String text, long pauseAt) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) return;
         if (nm.getNotificationChannel(CHANNEL) == null) {
@@ -373,9 +420,14 @@ final class PulseAlert {
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setContentIntent(openPi)
-                .setAutoCancel(true)
-                .addAction(new Notification.Action.Builder(null, "Arrêter", stopPi).build());
-        if (withSnooze) b.addAction(new Notification.Action.Builder(null, "Pas maintenant (1 h)", snoozePi).build());
+                .setAutoCancel(true);
+        if (pauseAt > 0) {
+            b.addAction(new Notification.Action.Builder(null, "Oui", answerIntent(ACTION_KEEP, 23, pauseAt)).build());
+            b.addAction(new Notification.Action.Builder(null, "Erreur", answerIntent(ACTION_ERASE, 24, pauseAt)).build());
+        } else {
+            b.addAction(new Notification.Action.Builder(null, "Arrêter", stopPi).build());
+            b.addAction(new Notification.Action.Builder(null, "Pas maintenant (1 h)", snoozePi).build());
+        }
         // Écran éteint : l'alerte s'affiche en grand (si Android le permet ; sinon, notification en haut de l'écran)
         if (Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent()) b.setFullScreenIntent(openPi, true);
         try {
@@ -430,12 +482,15 @@ final class PulseAlert {
         return "Sonnerie choisie";
     }
 
-    /** Boutons de la notification : « Arrêter » et « Pas maintenant (1 h) ». */
+    /** Boutons de la notification : « Oui » et « Erreur » pour une pause, « Arrêter » et « Pas maintenant (1 h) » pour le pouls. */
     public static class Receiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             PulseAlert a = get(context);
-            if (ACTION_SNOOZE.equals(intent.getAction())) a.snooze();
+            String action = intent.getAction();
+            if (ACTION_SNOOZE.equals(action)) a.snooze();
+            else if (ACTION_KEEP.equals(action)) a.answer(intent.getLongExtra(EXTRA_AT, 0), false);
+            else if (ACTION_ERASE.equals(action)) a.answer(intent.getLongExtra(EXTRA_AT, 0), true);
             else a.stop(true);
         }
     }

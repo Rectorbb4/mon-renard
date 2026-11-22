@@ -114,7 +114,7 @@
 
   {#if !captured.length}
     <p class="calm">
-      Quand tu tapotes trois fois ta bague, ton renard garde ton pouls des 10 secondes d'avant et des 10 secondes
+      Quand tu lances une pause avec ta bague, ton renard garde ton pouls des 10 secondes d'avant et des 10 secondes
       d'après. Ton premier moment apparaîtra ici.
     </p>
   {:else}

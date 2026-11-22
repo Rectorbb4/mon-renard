@@ -1,6 +1,6 @@
 <script lang="ts">
   // Le bouton pause : contre l'impulsivité, demander une pause sans sortir le téléphone.
-  // Trois tapotements sur la bague en 3 secondes (si l'option est activée), ou un porte-clés « iTag » pressé deux fois.
+  // Quatre tapotements sur la bague en 3 secondes (trois avant l'appli 2.7, si l'option est activée), ou un porte-clés « iTag » pressé deux fois.
   // Tout passe par l'appli Android (BleSensors.java, RingKeys.java, PulseAlert.trigger).
   import { appVersion, isAndroidApp, pauseBridge } from '../lib/android';
   import { stateLabel } from '../sensors/native';
@@ -15,6 +15,9 @@
   let ringMessage = $state<string | null>(null);
   // Avant la 2.2, l'option suivait encore les mouvements de la main
   const hasGestureOption = typeof b?.setRingGesture === 'function' && (appVersion()?.code ?? 0) >= 13;
+  // À partir de la 2.7 : un tapotement de plus, et Oui ou Erreur directement sur la notification
+  const answersOnNotification = (appVersion()?.code ?? 0) >= 18;
+  const tapCount = answersOnNotification ? 4 : 3;
   let gestureOn = $state(b?.ringGestureOn?.() ?? false);
   let gestureCount = $state(b?.ringGesturesLastHour?.() ?? 0);
 
@@ -115,13 +118,17 @@
   {#if b}
     <div class="row">
       <div>
-        <p class="what">Trois tapotements sur la bague</p>
+        <p class="what">{answersOnNotification ? 'Quatre' : 'Trois'} tapotements sur la bague</p>
         {#if !hasGestureOption}
           <p class="hint">Installe la version 2.2 de l'appli (plus bas) pour lancer une pause en tapotant ta bague.</p>
         {:else if gestureOn}
           <p class="hint">
-            Activé. Tapote au moins 3 fois en 3 secondes : le téléphone vibre, sonne pendant tes plages horaires, puis te
-            demande si c'est une erreur et comment tu te sens.
+            Activé. Tapote au moins {tapCount} fois en 3 secondes : le téléphone vibre et sonne pendant tes plages horaires.
+            {#if answersOnNotification}
+              Réponds Oui ou Erreur directement sur la notification, sans ouvrir l'appli.
+            {:else}
+              Il te demande ensuite si c'est une erreur et comment tu te sens.
+            {/if}
           </p>
           {#if (appVersion()?.code ?? 0) >= 16}
             <p class="hint">

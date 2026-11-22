@@ -113,6 +113,9 @@ final class BleSensors {
     private volatile boolean ringReady;
     private long gestureQuietUntil;
     private final TapRule taps = new TapRule();
+    /** Le dernier signal de mouvement de la bague (`02 02`). */
+    private long lastRingMotion;
+    private static final long MOTION_MARGIN = 1_000;
     private RingKeys ringKeys;
     /** Tapotements reçus depuis une heure, pour voir si la bague en envoie sans qu'on le veuille. */
     private final ArrayDeque<Long> gestureLog = new ArrayDeque<>();
@@ -258,6 +261,7 @@ final class BleSensors {
         }
         if (ColmiProtocol.isGesture(v)) {
             // Ce signal part aussi sur des mouvements ordinaires : il ne lance jamais de pause
+            lastRingMotion = now;
             if (ringTesting()) {
                 logUnknown(v);
                 emitGesture("message", hex(v));
@@ -279,11 +283,16 @@ final class BleSensors {
     }
 
     private void logLine(String text) {
+        log(ctx, text);
+    }
+
+    /** Une ligne de « Messages de la bague » : assez pour relire quelques pauses et leurs tapotements. */
+    static void log(Context ctx, String text) {
         SharedPreferences p = ctx.getSharedPreferences("capteurs", Context.MODE_PRIVATE);
         StringBuilder all = new StringBuilder(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.FRANCE).format(new java.util.Date()));
         all.append(' ').append(text);
         String[] old = p.getString("inconnus", "").split("\n");
-        for (int i = 0; i < Math.min(old.length, 11); i++) if (!old[i].isEmpty()) all.append('\n').append(old[i]);
+        for (int i = 0; i < Math.min(old.length, 29); i++) if (!old[i].isEmpty()) all.append('\n').append(old[i]);
         p.edit().putString("inconnus", all.toString()).apply();
     }
 
@@ -303,7 +312,7 @@ final class BleSensors {
     }
 
     /**
-     * Option activée : au moins trois tapotements en trois secondes demandent une pause.
+     * Option activée : au moins quatre tapotements en trois secondes demandent une pause.
      * Option désactivée (par défaut) : ils sont seulement comptés, rien ne vibre.
      */
     private void onRingTap(long now) {
@@ -314,7 +323,8 @@ final class BleSensors {
         if (!ringGestureOn() || now < gestureQuietUntil) return;
         if (taps.add(now)) {
             gestureQuietUntil = now + TAP_QUIET;
-            logLine("pause lancée");
+            // Noté seulement : on saura si les fausses pauses viennent avec un mouvement de la main
+            logLine(lastRingMotion >= taps.seriesStart() - MOTION_MARGIN ? "pause lancée, main en mouvement" : "pause lancée");
             PulseAlert.get(ctx).trigger(RING, taps.seriesStart());
         }
     }

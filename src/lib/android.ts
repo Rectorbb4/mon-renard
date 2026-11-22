@@ -54,11 +54,13 @@ export interface RenardAndroid {
   isOverLock?(): boolean;
   leaveLock?(): void;
   openLockSettings?(): void;
+  /** Appli 2.7 et suivantes : instants des pauses retirées avec « Erreur » sur la notification. */
+  takeErasedFelt?(): string;
 }
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */
 type PauseBridge = Required<Pick<RenardAndroid, 'takePendingFelt' | 'bleUnknown' | 'bleStart' | 'bleStop' | 'bleActive'>> &
-  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour' | 'setRingTest' | 'openLockSettings'>;
+  Pick<RenardAndroid, 'ringPing' | 'ringGestureOn' | 'setRingGesture' | 'ringGesturesLastHour' | 'setRingTest' | 'openLockSettings' | 'takeErasedFelt'>;
 
 /** La pause sur l'écran verrouillé (appli 2.6 et suivantes), ou null. */
 export function lockBridge(): Required<Pick<RenardAndroid, 'isOverLock' | 'leaveLock'>> | null {

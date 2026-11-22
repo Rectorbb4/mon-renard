@@ -4,7 +4,7 @@
   import { getDB } from './data/db';
   import { eraseFalsePauses } from './lib/falsePauses';
   import { journal, startJournal } from './lib/journal.svelte';
-  import { alarm, pullMoments, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
+  import { alarm, pauseAnswered, pullMoments, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { startHealthSync } from './lib/healthSync.svelte';
   import { leaveLock, lockScreen, refreshLock } from './lib/lockScreen.svelte';
@@ -36,6 +36,8 @@
   function openNativeAlert() {
     try {
       const s = JSON.parse(alertBridge()?.alertState() ?? 'null');
+      // Déjà répondu sur la notification : on ne repose pas la question
+      if (s?.answered === true) return;
       showNativeAlert(typeof s?.bpm === 'number' && s.bpm > 0 ? s.bpm : null, s?.ringing === true, s?.manual === true);
     } catch {
       showNativeAlert(null, false);
@@ -85,6 +87,7 @@
   $effect(() => {
     const onAlert = (e: Event) => {
       const d = (e as CustomEvent).detail ?? {};
+      if (d.answered) return pauseAnswered(d.at);
       // (l'essai, lui, a déjà ouvert son écran depuis la page)
       if (d.ringing && !d.test) showNativeAlert(typeof d.bpm === 'number' && d.bpm > 0 ? d.bpm : null, true, d.manual === true);
       else alarm.ringing = false;

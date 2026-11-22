@@ -139,6 +139,12 @@ public class RenardBridge {
         return PulseAlert.get(activity).takePendingFelt();
     }
 
+    /** Les pauses retirées avec « Erreur » sur la notification : à effacer du journal, rendues une seule fois. */
+    @JavascriptInterface
+    public String takeErasedFelt() {
+        return PulseAlert.get(activity).takeErasedFelt();
+    }
+
     /** Paquets de la bague encore inconnus (diagnostic du geste). */
     @JavascriptInterface
     public String bleUnknown() {
