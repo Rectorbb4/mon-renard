@@ -168,6 +168,29 @@ public class RenardBridge {
         activity.runOnUiThread(() -> BleSensors.get(activity).debugPacket(v));
     }
 
+    /** Les 20 secondes gardées autour des pauses, pas encore rangées par la page (une ligne JSON par moment). */
+    @JavascriptInterface
+    public String momentsRead() {
+        return MomentCapture.read(activity);
+    }
+
+    /** La page a rangé les `chars` premiers caractères. */
+    @JavascriptInterface
+    public void momentsAck(int chars) {
+        MomentCapture.ack(activity, chars);
+    }
+
+    /** Version d'essai seulement : une mesure de ceinture par seconde, même écran éteint (le pouls monte de 1 toutes les 2 s). */
+    @JavascriptInterface
+    public void debugReadings(int bpm, int seconds) {
+        if (!BuildConfig.DEBUG) return;
+        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        for (int i = 0; i < seconds; i++) {
+            int value = bpm + i / 2;
+            h.postDelayed(() -> BleSensors.get(activity).debugReading(value, 60_000 / value), i * 1000L);
+        }
+    }
+
     /** Version d'essai seulement : comme deux appuis sur le bouton pause (tests automatiques). */
     @JavascriptInterface
     public void debugTrigger() {

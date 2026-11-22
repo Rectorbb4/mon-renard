@@ -3,6 +3,7 @@
   // et ce qui bouge ensemble entre ton humeur et ton corps.
   import { untrack } from 'svelte';
   import FourWeeks from '../components/FourWeeks.svelte';
+  import MomentsCard from '../components/MomentsCard.svelte';
   import Terrier from '../components/Terrier.svelte';
   import TrendChart from '../components/TrendChart.svelte';
   import { checkInsBetween } from '../data/checkins';
@@ -341,6 +342,10 @@
         </ol>
       {/if}
     </section>
+  {/if}
+
+  {#if loaded}
+    <MomentsCard events={loaded.events} samples={loaded.samples} checkins={loaded.checkins} nights={loaded.nights} />
   {/if}
 
   {#if hasMeasures}

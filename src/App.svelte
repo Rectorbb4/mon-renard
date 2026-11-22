@@ -4,7 +4,7 @@
   import { getDB } from './data/db';
   import { eraseFalsePauses } from './lib/falsePauses';
   import { journal, startJournal } from './lib/journal.svelte';
-  import { alarm, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
+  import { alarm, pullMoments, recordPendingPauses, showNativeAlert, syncAlertConfig } from './lib/alert.svelte';
   import { requestAction } from './lib/appAction.svelte';
   import { startHealthSync } from './lib/healthSync.svelte';
   import { hrefFor, parseRoute, type Route } from './lib/router';
@@ -38,6 +38,7 @@
     if (code == null) return;
     await startJournal();
     if (journal.profileId != null) await eraseFalsePauses(getDB(), journal.profileId, code);
+    await pullMoments();
   }
 
   syncAlertConfig();
@@ -50,6 +51,12 @@
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
+  });
+  // Les 20 secondes autour d'une pause viennent d'être enregistrées, appli ouverte
+  $effect(() => {
+    const onMoment = () => void pullMoments().catch((e) => console.error(e));
+    window.addEventListener('renard-moment', onMoment);
+    return () => window.removeEventListener('renard-moment', onMoment);
   });
   const launchAction = takeLaunchAction();
   if (launchAction) handleAction(launchAction);

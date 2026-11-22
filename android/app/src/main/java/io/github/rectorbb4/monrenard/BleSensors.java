@@ -311,7 +311,7 @@ final class BleSensors {
         if (!ringGestureOn() || now < gestureQuietUntil) return;
         if (taps.add(now)) {
             gestureQuietUntil = now + TAP_QUIET;
-            PulseAlert.get(ctx).trigger(RING);
+            PulseAlert.get(ctx).trigger(RING, taps.seriesStart());
         }
     }
 
@@ -511,10 +511,19 @@ final class BleSensors {
         if (r != null && "connected".equals(r.state)) r.write(ColmiProtocol.blink());
     }
 
-    private void onHeartRate(String kind, int bpm) {
+    /** Version d'essai : une mesure comme si elle venait de la ceinture. */
+    void debugReading(int bpm, int rr) {
+        List<Integer> beats = new ArrayList<>();
+        if (rr > 0) beats.add(rr);
+        onHeartRate(BELT, bpm, beats);
+    }
+
+    private void onHeartRate(String kind, int bpm, List<Integer> rr) {
         long now = System.currentTimeMillis();
         if (BELT.equals(kind)) lastBeltHr = now;
         else if (now - lastBeltHr < PREFER_BELT_MS) return;
+        // Les dernières secondes, pour les retrouver autour d'une pause demandée
+        MomentCapture.get(ctx).onReading(kind, bpm, rr, now);
         // Alerte « ton pouls monte » (seuil, plages horaires) : voir PulseAlert
         PulseAlert.get(ctx).onHeart(bpm, now);
         if (now - lastWidget < WIDGET_EVERY) return;
@@ -1140,8 +1149,9 @@ final class BleSensors {
             if (button) {
                 if (!ITAG_PRESS.equals(id)) return;
                 if (lastPress > 0 && now - lastPress < DOUBLE_PRESS_MS) {
+                    long first = lastPress;
                     lastPress = 0;
-                    PulseAlert.get(ctx).trigger(BUTTON);
+                    PulseAlert.get(ctx).trigger(BUTTON, first);
                 } else {
                     lastPress = now;
                 }
@@ -1176,7 +1186,7 @@ final class BleSensors {
             J e = event(kind, "reading").putOpt("hr", bpm).putOpt("at", now);
             if (rr != null && !rr.isEmpty()) e.putOpt("rr", new JSONArray(rr));
             emit(e);
-            onHeartRate(kind, bpm);
+            onHeartRate(kind, bpm, rr);
         }
 
         // ---------------------------------------------------------- fin

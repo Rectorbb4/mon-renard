@@ -200,12 +200,18 @@ final class PulseAlert {
     }
 
     void trigger(String from) {
+        trigger(from, System.currentTimeMillis());
+    }
+
+    /** `gestureStart` : le début du geste. Les 10 secondes avant lui et après lui sont gardées avec ce moment. */
+    void trigger(String from, long gestureStart) {
         long now = System.currentTimeMillis();
         // Une pause en cours n'est jamais relancée : la vibration finit toujours par s'arrêter
         if ((ringing && manual) || now - lastTrigger < 5_000) return;
         lastTrigger = now;
         String pending = prefs.getString("pendingFelt", "");
         prefs.edit().putString("pendingFelt", pending.isEmpty() ? String.valueOf(now) : pending + "," + now).apply();
+        MomentCapture.get(ctx).begin(now, gestureStart);
         boolean sound = inSlots(now);
         stopSound();
         ringing = true;

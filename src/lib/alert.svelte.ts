@@ -3,8 +3,11 @@
 // Dans l'appli Android, c'est l'appli qui surveille et sonne, même fermée (PulseAlert.java) ; la page
 // lui envoie les réglages et affiche l'écran d'alerte quand on l'ouvre.
 
-import { alertBridge, pauseBridge } from './android';
-import { cancelFeltAt, feelIt, noteFeltAt } from './journal.svelte';
+import { getDB } from '../data/db';
+import { ingestMoments } from '../data/moments';
+import { alertBridge, momentsBridge, pauseBridge } from './android';
+import { ringSync } from './healthSync.svelte';
+import { cancelFeltAt, feelIt, journal, noteFeltAt, startJournal } from './journal.svelte';
 import { parseAlertConfig, PulseWatch, type AlertConfig } from './pulseAlert';
 
 const KEY = 'mon-renard:alerte-pouls';
@@ -179,6 +182,29 @@ async function recordNow(): Promise<void> {
   }
   const times = raw.split(',').map(Number).filter((at) => Number.isFinite(at) && at > 0);
   await Promise.all(times.map((at) => feelIt(at).catch((e) => console.error(e))));
+}
+
+let pullingMoments: Promise<void> = Promise.resolve();
+
+/** Range avec chaque moment le pouls gardé autour de lui (10 s avant le geste, 10 s après). */
+export function pullMoments(): Promise<void> {
+  pullingMoments = pullingMoments.then(pullMomentsNow, pullMomentsNow);
+  return pullingMoments;
+}
+
+async function pullMomentsNow(): Promise<void> {
+  const b = momentsBridge();
+  if (!b) return;
+  // Le moment doit être dans le journal avant qu'on y pose ses mesures
+  await recordPendingPauses();
+  await startJournal();
+  if (journal.profileId == null) return;
+  const text = b.momentsRead();
+  if (!text) return;
+  const saved = await ingestMoments(getDB(), journal.profileId, text);
+  // Effacé seulement une fois rangé dans la base
+  b.momentsAck(text.length);
+  if (saved) ringSync.revision++;
 }
 
 // ------------------------------------------------------------------ son et vibration (navigateur)

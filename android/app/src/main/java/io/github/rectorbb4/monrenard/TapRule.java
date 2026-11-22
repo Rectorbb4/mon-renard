@@ -11,6 +11,7 @@ final class TapRule {
     private static final long SAME_TAP_MS = 60;
 
     private final ArrayDeque<Long> taps = new ArrayDeque<>();
+    private long seriesStart;
 
     /** Note un tapotement ; vrai quand il complète la série (elle repart alors de zéro). */
     boolean add(long now) {
@@ -19,8 +20,14 @@ final class TapRule {
         while (!taps.isEmpty() && now - taps.peekFirst() > WINDOW_MS) taps.removeFirst();
         taps.addLast(now);
         if (taps.size() < COUNT) return false;
+        seriesStart = taps.peekFirst();
         taps.clear();
         return true;
+    }
+
+    /** Le premier tapotement de la dernière série complète. */
+    long seriesStart() {
+        return seriesStart;
     }
 
     void clear() {

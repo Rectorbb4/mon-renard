@@ -45,6 +45,9 @@ export interface RenardAndroid {
   bleStart?(kind: string): boolean;
   bleStop?(kind: string): void;
   bleActive?(): string;
+  /** Appli 2.4 et suivantes : le pouls gardé autour des pauses, une ligne JSON par moment. */
+  momentsRead?(): string;
+  momentsAck?(chars: number): void;
 }
 
 /** Le bouton pause (appli 1.5 et suivantes), ou null. */
@@ -62,6 +65,14 @@ export type AlertBridge = Required<Pick<RenardAndroid, 'setAlertConfig' | 'pickA
 export function alertBridge(): AlertBridge | null {
   const b = bridge();
   return b && typeof b.setAlertConfig === 'function' && typeof b.alertState === 'function' ? (b as AlertBridge) : null;
+}
+
+/** Le pouls gardé autour des pauses (appli 2.4 et suivantes), ou null. */
+export function momentsBridge(): Required<Pick<RenardAndroid, 'momentsRead' | 'momentsAck'>> | null {
+  const b = bridge();
+  return b && typeof b.momentsRead === 'function' && typeof b.momentsAck === 'function'
+    ? (b as Required<Pick<RenardAndroid, 'momentsRead' | 'momentsAck'>>)
+    : null;
 }
 
 function bridge(): RenardAndroid | null {

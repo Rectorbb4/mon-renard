@@ -5,6 +5,7 @@ import { Dexie } from 'dexie';
 import { WORD_MAX, ensureProfile, normalizeCheckIn } from './checkins';
 import type { RenardDB } from './db';
 import { cleanNote } from './events';
+import { cleanCapture } from './moments';
 import { HEALTH_METRICS, type CheckIn, type FeltEvent, type HealthMetric, type HealthSample, type Profile, type SleepNight, type SleepStage } from './types';
 
 export const BACKUP_APP = 'mon-renard';
@@ -73,7 +74,7 @@ export async function exportBackup(db: RenardDB, now = Date.now(), appVersion?: 
 
 export function backupToJson(backup: Backup): string {
   // Avec les mesures, sans mise en forme : le fichier resterait sinon plusieurs fois plus gros
-  return backup.health ? JSON.stringify(backup) : JSON.stringify(backup, null, 1);
+  return backup.health || backup.events.some((e) => e.capture) ? JSON.stringify(backup) : JSON.stringify(backup, null, 1);
 }
 
 /** « mon-renard-sauvegarde-2026-11-15.json » (date locale). */
@@ -185,6 +186,8 @@ export function parseBackup(text: string): ParsedBackup {
     const event: Omit<FeltEvent, 'id'> = { profileId: e.profileId as number, at: e.at };
     const note = cleanNote(typeof e.note === 'string' ? e.note : undefined);
     if (note) event.note = note;
+    const capture = cleanCapture(e.capture);
+    if (capture) event.capture = capture;
     events.push(event);
   }
 
@@ -297,6 +300,11 @@ export async function importBackup(db: RenardDB, backup: Backup): Promise<Import
           if (!twin.note && e.note) {
             twin.note = e.note;
             await db.events.update(twin.id!, { note: e.note });
+          }
+          // Pareil pour le pouls gardé autour de ce moment
+          if (!twin.capture && e.capture) {
+            twin.capture = e.capture;
+            await db.events.update(twin.id!, { capture: e.capture });
           }
           continue;
         }

@@ -23,12 +23,28 @@ export interface CheckIn {
   word?: string;
 }
 
+/**
+ * Le pouls gardé autour d'une pause demandée : 10 s avant le début du geste, 10 s après.
+ * Les instants sont en millisecondes par rapport à `start` (négatifs = avant le geste).
+ * Listes vides : aucun capteur ne mesurait le pouls à ce moment.
+ */
+export interface MomentCapture {
+  /** Le premier tapotement du geste. */
+  start: number;
+  source: 'ceinture' | 'bague' | null;
+  /** [instant, battements par minute] */
+  hr: [number, number][];
+  /** [instant, intervalle entre deux battements en ms] : ceinture seulement. */
+  rr: [number, number][];
+}
+
 /** Un moment « je le sens » (étape 3). */
 export interface FeltEvent {
   id?: number;
   profileId: number;
   at: number;
   note?: string;
+  capture?: MomentCapture;
 }
 
 /** Ce que les capteurs relèvent. `belt…` : une valeur par minute de ceinture portée. */

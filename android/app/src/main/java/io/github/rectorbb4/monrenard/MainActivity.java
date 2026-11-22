@@ -71,6 +71,10 @@ public class MainActivity extends Activity {
         PulseAlert.get(this).setListener((name, json) -> runOnUiThread(() -> {
             if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('" + name + "',{detail:" + json + "}))", null);
         }));
+        // Les 20 secondes autour d'une pause sont prêtes : la page les range avec ce moment
+        MomentCapture.get(this).setListener(() -> runOnUiThread(() -> {
+            if (web != null) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('renard-moment'))", null);
+        }));
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
@@ -290,6 +294,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         BleSensors.get(this).setListener(null);
         PulseAlert.get(this).setListener(null);
+        MomentCapture.get(this).setListener(null);
         web.destroy();
         super.onDestroy();
     }
